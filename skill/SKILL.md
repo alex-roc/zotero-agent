@@ -43,6 +43,22 @@ zot tags                                # #items, tag
 
 Add `--json` to any read command for machine-readable output.
 
+### Better BibTeX citekeys
+
+Users often refer to items by their **BBT citekey** (e.g.
+`ojedaDigitalizacionSocietalTeorias2025`), not the 8-char Zotero key. `zot get`
+and `zot pdf` accept either — a citekey is auto-detected (prefix with `@` to
+force it). To resolve a citekey explicitly:
+
+```bash
+zot cite <CITEKEY>          # -> Zotero item key, title, PDF path(s)
+zot pdf  <CITEKEY>          # PDF path directly (citekey or Zotero key)
+zot get  <CITEKEY>          # item fields
+```
+
+Resolution goes through Better BibTeX's JSON-RPC, so it needs the BBT plugin
+installed (it is, for anyone using citekeys).
+
 ## Writing (via `zot exec`)
 
 `zot exec` sends JavaScript to the plugin. The code is an **async function

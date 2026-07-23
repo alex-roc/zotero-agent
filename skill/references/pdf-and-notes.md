@@ -20,7 +20,12 @@ Fastest — the CLI prints the path(s):
 ```bash
 zot pdf <ITEMKEY>            # one path per line
 zot pdf <ITEMKEY> --json     # {itemKey, title, pdfs:[{attachmentKey, path, title}]}
+zot pdf <CITEKEY>            # also accepts a Better BibTeX citekey (auto-detected)
 ```
+
+If the user gives a **Better BibTeX citekey** (e.g.
+`ojedaDigitalizacionSocietalTeorias2025`), `zot pdf`/`zot get` resolve it
+automatically; `zot cite <CITEKEY>` returns the Zotero key + PDF path(s).
 
 Equivalent via `zot exec` if you need more control (e.g. non-PDF attachments):
 

@@ -91,6 +91,48 @@ def zotexec(cfg, code, timeout=120):
         return {"ok": False, "error": "cannot reach %s (%s)" % (url, e.reason)}
 
 
+ZOTERO_KEY_RE = None  # compiled lazily
+
+
+def bbt_rpc(cfg, method, params, timeout=30):
+    """Call the Better BibTeX JSON-RPC endpoint. Returns the `result` or raises."""
+    url = cfg["base"].rstrip("/") + "/better-bibtex/json-rpc"
+    body = json.dumps({"jsonrpc": "2.0", "method": method, "params": params, "id": 1}).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=body, method="POST", headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        die("cannot reach Better BibTeX JSON-RPC (%s). Is the BBT plugin installed?" % e.reason)
+    if "error" in payload:
+        die("BBT JSON-RPC error: %s" % payload["error"])
+    return payload.get("result")
+
+
+def resolve_key(cfg, keyish):
+    """Return a Zotero item key. Accepts a Zotero key (8 uppercase alnum) as-is,
+    or a Better BibTeX citekey (optionally prefixed with '@') which is resolved
+    via BBT's JSON-RPC."""
+    import re
+
+    global ZOTERO_KEY_RE
+    if ZOTERO_KEY_RE is None:
+        ZOTERO_KEY_RE = re.compile(r"^[A-Z0-9]{8}$")
+    forced_citekey = keyish.startswith("@")
+    ck = keyish[1:] if forced_citekey else keyish
+    if not forced_citekey and ZOTERO_KEY_RE.match(ck):
+        return ck  # already a Zotero item key
+    # resolve citekey via BBT
+    results = bbt_rpc(cfg, "item.search", [ck]) or []
+    for r in results:
+        if r.get("citekey") == ck or r.get("citation-key") == ck:
+            item_id = r.get("id", "")  # e.g. http://zotero.org/users/2960998/items/WD7FCHBW
+            return item_id.rstrip("/").split("/")[-1]
+    die("citekey not found in Better BibTeX: %s" % ck, code=3)
+
+
 def api_url(cfg, path, params=None):
     uid = cfg.get("userID")
     if not uid:
@@ -144,7 +186,8 @@ def cmd_search(args):
 
 def cmd_get(args):
     cfg = require_config()
-    status, body = http_get(api_url(cfg, "items/" + args.key))
+    key = resolve_key(cfg, args.key)
+    status, body = http_get(api_url(cfg, "items/" + key))
     data = json.loads(body)
     if args.json:
         print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -154,9 +197,39 @@ def cmd_get(args):
             print("%-20s %s" % (k, v))
 
 
+def cmd_cite(args):
+    """Resolve a Better BibTeX citekey to its Zotero item key, title and PDF path(s)."""
+    cfg = require_config()
+    results = bbt_rpc(cfg, "item.search", [args.citekey]) or []
+    match = None
+    for r in results:
+        if r.get("citekey") == args.citekey or r.get("citation-key") == args.citekey:
+            match = r
+            break
+    if not match:
+        die("citekey not found in Better BibTeX: %s" % args.citekey, code=3)
+    item_key = match.get("id", "").rstrip("/").split("/")[-1]
+    atts = bbt_rpc(cfg, "item.attachments", [args.citekey]) or []
+    pdfs = [a.get("path") for a in atts if str(a.get("path", "")).lower().endswith(".pdf")]
+    out = {
+        "citekey": args.citekey,
+        "itemKey": item_key,
+        "title": match.get("title"),
+        "itemType": match.get("type"),
+        "pdfs": pdfs,
+    }
+    if args.json:
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+    else:
+        print("%-10s %s" % (item_key, out["title"]))
+        for p in pdfs:
+            print("  PDF: " + p)
+
+
 def cmd_pdf(args):
     """Print the local path(s) of the PDF attachment(s) of an item."""
     cfg = require_config()
+    key = resolve_key(cfg, args.key)
     code = """
 var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);
 if (!it) return { error: 'item not found: ' + %r };
@@ -169,7 +242,7 @@ for (var id of atts) {
   }
 }
 return { itemKey: it.key, title: it.getField('title'), pdfs: out };
-""" % (args.key, args.key)
+""" % (key, key)
     env = zotexec(cfg, code)
     if not env.get("ok"):
         die(env.get("error") or "zotexec error", code=2)
@@ -318,13 +391,18 @@ def build_parser():
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_search)
 
-    sp = sub.add_parser("get", help="fetch one item by key (read API)")
-    sp.add_argument("key")
+    sp = sub.add_parser("get", help="fetch one item by Zotero key or BBT citekey (read API)")
+    sp.add_argument("key", help="Zotero item key, or a Better BibTeX citekey (prefix with @ to force)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_get)
 
-    sp = sub.add_parser("pdf", help="print local path(s) of an item's PDF attachment(s)")
-    sp.add_argument("key", help="item key (or an attachment key)")
+    sp = sub.add_parser("cite", help="resolve a Better BibTeX citekey to item key + PDF path(s)")
+    sp.add_argument("citekey")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_cite)
+
+    sp = sub.add_parser("pdf", help="print local path(s) of an item's PDF(s), by key or citekey")
+    sp.add_argument("key", help="Zotero item/attachment key, or a Better BibTeX citekey (prefix with @ to force)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_pdf)
 
