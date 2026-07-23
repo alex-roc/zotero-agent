@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""zot — command-line control for a local Zotero instance.
+
+Read path  : Zotero's local HTTP API  (GET /api/users/<id>/...)  — fast.
+Write path : the zotero-exec plugin    (POST /zotexec)           — arbitrary JS.
+
+Config lives in ~/.config/zotero-exec/config.json:
+    { "token": "...", "userID": 2960998, "base": "http://localhost:23119" }
+
+Stdlib only (urllib) — no dependencies, no daemon.
+"""
+
+import argparse
+import glob
+import json
+import os
+import secrets
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+CONFIG_DIR = os.path.expanduser("~/.config/zotero-exec")
+CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+DEFAULT_BASE = "http://localhost:23119"
+
+
+# --------------------------------------------------------------------------- #
+# config
+# --------------------------------------------------------------------------- #
+def load_config():
+    if not os.path.exists(CONFIG_PATH):
+        return {}
+    with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def save_config(cfg):
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh, indent=2)
+        fh.write("\n")
+    os.chmod(CONFIG_PATH, 0o600)
+
+
+def require_config():
+    cfg = load_config()
+    if not cfg.get("token"):
+        die("No config found. Run `zot init` first.")
+    cfg.setdefault("base", DEFAULT_BASE)
+    return cfg
+
+
+def die(msg, code=1):
+    print("error: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+# --------------------------------------------------------------------------- #
+# http helpers
+# --------------------------------------------------------------------------- #
+def http_get(url, timeout=30):
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.status, resp.read().decode("utf-8")
+
+
+def zotexec(cfg, code, timeout=120):
+    """POST code to /zotexec. Returns the parsed JSON envelope {ok, result|error}."""
+    url = cfg["base"].rstrip("/") + "/zotexec"
+    body = json.dumps({"code": code}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Zotexec-Token": cfg["token"],
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace")
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": "HTTP %s: %s" % (e.code, raw)}
+    except urllib.error.URLError as e:
+        return {"ok": False, "error": "cannot reach %s (%s)" % (url, e.reason)}
+
+
+def api_url(cfg, path, params=None):
+    uid = cfg.get("userID")
+    if not uid:
+        die("userID unknown. Run `zot init` (with the plugin installed) to detect it.")
+    url = "%s/api/users/%s/%s" % (cfg["base"].rstrip("/"), uid, path.lstrip("/"))
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    return url
+
+
+# --------------------------------------------------------------------------- #
+# commands
+# --------------------------------------------------------------------------- #
+def cmd_ping(args):
+    cfg = require_config()
+    ok = True
+    # layer 0: Zotero running + local API
+    try:
+        status, _ = http_get(cfg["base"].rstrip("/") + "/api/")
+        print("Zotero local API : up (HTTP %s)" % status)
+    except Exception as e:  # noqa: BLE001
+        # /api/ may 404 but still proves the server is up; only a connection
+        # error means Zotero is down.
+        if isinstance(e, urllib.error.HTTPError):
+            print("Zotero local API : up (HTTP %s)" % e.code)
+        else:
+            print("Zotero local API : DOWN (%s)" % e)
+            ok = False
+    # layer 2: /zotexec round-trip
+    env = zotexec(cfg, "return 1 + 1;")
+    if env.get("ok") and env.get("result") == 2:
+        print("zotexec endpoint : up (1+1 == 2)")
+    else:
+        print("zotexec endpoint : FAIL (%s)" % (env.get("error") or env))
+        ok = False
+    # userID sanity
+    print("userID           : %s" % (cfg.get("userID") or "UNKNOWN"))
+    sys.exit(0 if ok else 1)
+
+
+def cmd_search(args):
+    cfg = require_config()
+    params = {"q": args.query, "limit": args.limit, "format": "json"}
+    if args.item_type:
+        params["itemType"] = args.item_type
+    if args.tag:
+        params["tag"] = args.tag
+    status, body = http_get(api_url(cfg, "items", params))
+    _print_items(json.loads(body), args.json)
+
+
+def cmd_get(args):
+    cfg = require_config()
+    status, body = http_get(api_url(cfg, "items/" + args.key))
+    data = json.loads(body)
+    if args.json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        d = data.get("data", data)
+        for k, v in d.items():
+            print("%-20s %s" % (k, v))
+
+
+def cmd_collections(args):
+    cfg = require_config()
+    status, body = http_get(api_url(cfg, "collections", {"limit": args.limit}))
+    data = json.loads(body)
+    if args.json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    for c in data:
+        d = c.get("data", {})
+        meta = c.get("meta", {})
+        print("%-10s %-4s %s" % (d.get("key", ""), meta.get("numItems", ""), d.get("name", "")))
+
+
+def cmd_tags(args):
+    cfg = require_config()
+    status, body = http_get(api_url(cfg, "tags", {"limit": args.limit}))
+    data = json.loads(body)
+    if args.json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    for t in data:
+        d = t.get("data", t)
+        meta = t.get("meta", {})
+        print("%-6s %s" % (meta.get("numItems", ""), d.get("tag", "")))
+
+
+def cmd_exec(args):
+    cfg = require_config()
+    if args.source == "-":
+        code = sys.stdin.read()
+    elif os.path.exists(args.source):
+        with open(args.source, "r", encoding="utf-8") as fh:
+            code = fh.read()
+    else:
+        # treat the argument itself as inline JS
+        code = args.source
+    env = zotexec(cfg, code)
+    if env.get("ok"):
+        result = env.get("result")
+        if isinstance(result, (dict, list)):
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif result is not None:
+            print(result)
+    else:
+        die(env.get("error") or "unknown error from zotexec", code=2)
+
+
+def cmd_init(args):
+    cfg = load_config()
+    changed = False
+
+    if not cfg.get("token"):
+        cfg["token"] = secrets.token_urlsafe(24)
+        changed = True
+        print("Generated a new token.")
+    cfg.setdefault("base", DEFAULT_BASE)
+
+    # detect the Zotero profile (informational — used by install.sh)
+    profile = detect_profile()
+    if profile:
+        cfg["profile"] = profile
+        print("Detected profile : %s" % profile)
+    else:
+        print("Profile          : not found (see docs/install.md for your OS)")
+
+    save_config(cfg)
+    print("Wrote config     : %s" % CONFIG_PATH)
+
+    # detect userID via the plugin (needs it installed + Zotero running)
+    env = zotexec(cfg, "return Zotero.Users.getCurrentUserID();")
+    if env.get("ok") and env.get("result"):
+        cfg["userID"] = env["result"]
+        save_config(cfg)
+        print("Detected userID  : %s" % cfg["userID"])
+        print("\nAll set. Try:  zot ping")
+    else:
+        print("\nCould not reach the zotexec plugin yet:")
+        print("  %s" % (env.get("error") or env))
+        print("\nInstall the plugin and restart Zotero (see docs/install.md),")
+        print("then re-run `zot init` to auto-detect your userID.")
+
+
+def detect_profile():
+    patterns = [
+        "~/Library/Application Support/Zotero/Profiles/*.default*",  # macOS
+        "~/.zotero/zotero/*.default*",  # Linux
+        "~/AppData/Roaming/Zotero/Zotero/Profiles/*.default*",  # Windows
+    ]
+    for pat in patterns:
+        matches = glob.glob(os.path.expanduser(pat))
+        if matches:
+            return matches[0]
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# formatting
+# --------------------------------------------------------------------------- #
+def _print_items(items, as_json):
+    if as_json:
+        print(json.dumps(items, indent=2, ensure_ascii=False))
+        return
+    for it in items:
+        d = it.get("data", {})
+        key = d.get("key", "")
+        typ = d.get("itemType", "")
+        title = d.get("title") or d.get("note") or "(untitled)"
+        date = d.get("date", "")
+        print("%-10s %-15s %-6s %s" % (key, typ, date, title))
+
+
+# --------------------------------------------------------------------------- #
+# argparse
+# --------------------------------------------------------------------------- #
+def build_parser():
+    p = argparse.ArgumentParser(prog="zot", description="Control a local Zotero instance.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("ping", help="check the read API and the zotexec endpoint")
+    sp.set_defaults(func=cmd_ping)
+
+    sp = sub.add_parser("init", help="generate token, write config, auto-detect userID")
+    sp.set_defaults(func=cmd_init)
+
+    sp = sub.add_parser("search", help="full-text search items (read API)")
+    sp.add_argument("query")
+    sp.add_argument("--limit", type=int, default=25)
+    sp.add_argument("--item-type", dest="item_type")
+    sp.add_argument("--tag")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_search)
+
+    sp = sub.add_parser("get", help="fetch one item by key (read API)")
+    sp.add_argument("key")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_get)
+
+    sp = sub.add_parser("collections", help="list collections (read API)")
+    sp.add_argument("--limit", type=int, default=200)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_collections)
+
+    sp = sub.add_parser("tags", help="list tags (read API)")
+    sp.add_argument("--limit", type=int, default=200)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_tags)
+
+    sp = sub.add_parser(
+        "exec",
+        help="run JS via /zotexec. SOURCE is a file, '-' for stdin, or inline JS.",
+    )
+    sp.add_argument("source")
+    sp.set_defaults(func=cmd_exec)
+
+    return p
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        args.func(args)
+    except urllib.error.HTTPError as e:
+        die("HTTP %s: %s" % (e.code, e.read().decode("utf-8", "replace")))
+    except urllib.error.URLError as e:
+        die("cannot reach Zotero (%s). Is it running?" % e.reason)
+
+
+if __name__ == "__main__":
+    main()

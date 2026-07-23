@@ -1,0 +1,12 @@
+# Built artifacts (produced by plugin/build.sh)
+/dist/
+
+# Self-contained skill bundle (produced by install.sh from cli/ and plugin/)
+/skill/scripts/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# skill-creator eval workspace (artefactos + backup)
+/zotero-workspace/

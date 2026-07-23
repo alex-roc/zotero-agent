@@ -1,0 +1,44 @@
+{
+  "skill_name": "zotero",
+  "evals": [
+    {
+      "id": 0,
+      "name": "export-collection-json",
+      "prompt": "Export the items of my Zotero collection with key SS5MVVB6 to a JSON file, including each item's title, date, tags and type.",
+      "expected_output": "A JSON file with the 8 items of the collection, each with title/date/tags/type. Read-only; no attempt to POST to the read-only API.",
+      "files": [],
+      "assertions": [
+        "Produced an actual JSON file (did not just dump the export into chat)",
+        "The JSON contains the 8 items of collection SS5MVVB6",
+        "Each item entry includes title, date, tags and type fields",
+        "Did not attempt to write through the read-only local HTTP API (used the read API or zot exec)"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "tag-noabstract-in-collection",
+      "prompt": "In my Zotero library, add the tag #revisar to the items in the collection with key SS5MVVB6 that don't have an abstract. Before changing anything, show me how many there are and a couple of example titles.",
+      "expected_output": "Reports the count + sample of abstract-less items in SS5MVVB6 first (dry-run), then applies #revisar to exactly those items. Scoped to SS5MVVB6, not the whole library.",
+      "files": [],
+      "assertions": [
+        "Reported the count and example titles BEFORE applying any tag (dry-run first)",
+        "Detected missing abstracts reliably (filtering on getField('abstractNote'), not the empty-string search condition which returns 0)",
+        "Applied #revisar only to items in collection SS5MVVB6 that lack an abstract (did not tag the whole library)",
+        "Acknowledged the safe workflow for writes (backup / sync / test-small / dry-run)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "subcollection-move-recent",
+      "prompt": "Create a subcollection called 'Borradores' under my collection with key SS5MVVB6, and move my 2 most recently added items into it.",
+      "expected_output": "A new collection 'Borradores' with parent SS5MVVB6, containing the 2 most recently added library items. Reports the new key and confirms the move.",
+      "files": [],
+      "assertions": [
+        "Created a collection named exactly 'Borradores'",
+        "Set its parent to collection SS5MVVB6 (it is a subcollection, not top-level)",
+        "Added the 2 most recently added items (by dateAdded) into 'Borradores'",
+        "Confirmed the result, reporting the new collection key and the items moved"
+      ]
+    }
+  ]
+}

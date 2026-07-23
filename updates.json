@@ -1,0 +1,18 @@
+{
+  "addons": {
+    "zotexec@zotero-cli-skill": {
+      "updates": [
+        {
+          "version": "0.1.0",
+          "update_link": "https://github.com/alex-roc/zotero-cli-skill/releases/download/v0.1.0/zotexec-0.1.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "10.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
