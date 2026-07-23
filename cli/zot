@@ -28,6 +28,15 @@ CONFIG_DIR = os.path.expanduser("~/.config/zotero-exec")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 DEFAULT_BASE = "http://localhost:23119"
 
+# Exit codes (documented; kept < 126 to avoid shell conflicts).
+EXIT_GENERIC = 1       # generic error / failed check
+EXIT_CONN = 2          # cannot reach Zotero, or a zotexec runtime error
+EXIT_NOTFOUND = 3      # item / collection / citekey not found
+EXIT_CONFIG = 4        # missing or invalid configuration
+
+QUIET = False          # set from global --quiet
+DEBUG = False          # set from global --debug
+
 
 # --------------------------------------------------------------------------- #
 # config
@@ -47,17 +56,60 @@ def save_config(cfg):
     os.chmod(CONFIG_PATH, 0o600)
 
 
-def require_config():
+def require_config(args=None):
+    """Resolve config with precedence: flags > env (ZOTEXEC_*) > file > default."""
     cfg = load_config()
+    # env overrides
+    env = os.environ
+    if env.get("ZOTEXEC_BASE"):
+        cfg["base"] = env["ZOTEXEC_BASE"]
+    if env.get("ZOTEXEC_TOKEN"):
+        cfg["token"] = env["ZOTEXEC_TOKEN"]
+    if env.get("ZOTEXEC_USER_ID"):
+        cfg["userID"] = env["ZOTEXEC_USER_ID"]
+    # flag overrides (highest precedence)
+    if args is not None:
+        if getattr(args, "base", None):
+            cfg["base"] = args.base
+        if getattr(args, "token", None):
+            cfg["token"] = args.token
+        if getattr(args, "user_id", None):
+            cfg["userID"] = args.user_id
     if not cfg.get("token"):
-        die("No config found. Run `zot init` first.")
+        die("No token configured. Run `zot init`, or pass --token / set ZOTEXEC_TOKEN.",
+            code=EXIT_CONFIG)
     cfg.setdefault("base", DEFAULT_BASE)
     return cfg
 
 
-def die(msg, code=1):
+def die(msg, code=EXIT_GENERIC):
     print("error: " + msg, file=sys.stderr)
     sys.exit(code)
+
+
+def info(msg):
+    """Print a non-essential notice to stderr, unless --quiet."""
+    if not QUIET:
+        print(msg, file=sys.stderr)
+
+
+def debug(msg):
+    if DEBUG:
+        print("[debug] " + msg, file=sys.stderr)
+
+
+def confirm_write(args, description):
+    """Guard a write. With --yes, proceed. On a TTY, prompt. Otherwise refuse
+    (agents/scripts must pass --yes), so writes are never silent by default."""
+    if getattr(args, "yes", False):
+        return
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        resp = input("%s Proceed? [y/N] " % description).strip().lower()
+        if resp not in ("y", "yes"):
+            die("aborted by user", code=EXIT_GENERIC)
+        return
+    die("%s Re-run with --yes to confirm (or --dry-run to preview)." % description,
+        code=EXIT_GENERIC)
 
 
 # --------------------------------------------------------------------------- #
@@ -111,10 +163,7 @@ def api_list(cfg, path, params=None, want_all=False, limit=25):
 
 def truncation_notice(shown, total, want_all):
     if not want_all and total is not None and total > shown:
-        print(
-            "... showing %d of %d — use --all to fetch everything" % (shown, total),
-            file=sys.stderr,
-        )
+        info("... showing %d of %d — use --all to fetch everything" % (shown, total))
 
 
 def zotexec(cfg, code, timeout=120):
@@ -182,7 +231,7 @@ def resolve_key(cfg, keyish):
         if r.get("citekey") == ck or r.get("citation-key") == ck:
             item_id = r.get("id", "")  # e.g. http://zotero.org/users/2960998/items/WD7FCHBW
             return item_id.rstrip("/").split("/")[-1]
-    die("citekey not found in Better BibTeX: %s" % ck, code=3)
+    die("citekey not found in Better BibTeX: %s" % ck, code=EXIT_NOTFOUND)
 
 
 def api_url(cfg, path, params=None):
@@ -199,7 +248,7 @@ def api_url(cfg, path, params=None):
 # commands
 # --------------------------------------------------------------------------- #
 def cmd_ping(args):
-    cfg = require_config()
+    cfg = require_config(args)
     ok = True
     # layer 0: Zotero running + local API
     try:
@@ -229,15 +278,15 @@ def run_js(cfg, code, timeout=120):
     """Send JS to /zotexec and return the result, or die with the error."""
     env = zotexec(cfg, code, timeout=timeout)
     if not env.get("ok"):
-        die(env.get("error") or "zotexec error", code=2)
+        die(env.get("error") or "zotexec error", code=EXIT_CONN)
     result = env.get("result")
     if isinstance(result, dict) and result.get("error"):
-        die(result["error"], code=3)
+        die(result["error"], code=EXIT_NOTFOUND)
     return result
 
 
 def cmd_search(args):
-    cfg = require_config()
+    cfg = require_config(args)
     params = {"q": args.query, "format": "json"}
     if args.item_type:
         params["itemType"] = args.item_type
@@ -250,7 +299,7 @@ def cmd_search(args):
 
 
 def cmd_get(args):
-    cfg = require_config()
+    cfg = require_config(args)
     key = resolve_key(cfg, args.key)
     status, body = http_get(api_url(cfg, "items/" + key))
     data = json.loads(body)
@@ -264,7 +313,7 @@ def cmd_get(args):
 
 def cmd_cite(args):
     """Resolve a Better BibTeX citekey to its Zotero item key, title and PDF path(s)."""
-    cfg = require_config()
+    cfg = require_config(args)
     results = bbt_rpc(cfg, "item.search", [args.citekey]) or []
     match = None
     for r in results:
@@ -272,7 +321,7 @@ def cmd_cite(args):
             match = r
             break
     if not match:
-        die("citekey not found in Better BibTeX: %s" % args.citekey, code=3)
+        die("citekey not found in Better BibTeX: %s" % args.citekey, code=EXIT_NOTFOUND)
     item_key = match.get("id", "").rstrip("/").split("/")[-1]
     atts = bbt_rpc(cfg, "item.attachments", [args.citekey]) or []
     pdfs = [a.get("path") for a in atts if str(a.get("path", "")).lower().endswith(".pdf")]
@@ -293,7 +342,7 @@ def cmd_cite(args):
 
 def cmd_pdf(args):
     """Print the local path(s) of the PDF attachment(s) of an item."""
-    cfg = require_config()
+    cfg = require_config(args)
     key = resolve_key(cfg, args.key)
     code = """
 var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);
@@ -310,22 +359,22 @@ return { itemKey: it.key, title: it.getField('title'), pdfs: out };
 """ % (key, key)
     env = zotexec(cfg, code)
     if not env.get("ok"):
-        die(env.get("error") or "zotexec error", code=2)
+        die(env.get("error") or "zotexec error", code=EXIT_CONN)
     result = env.get("result") or {}
     if result.get("error"):
-        die(result["error"], code=2)
+        die(result["error"], code=EXIT_CONN)
     pdfs = result.get("pdfs", [])
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     if not pdfs:
-        die("no PDF attachments found for item %s" % args.key, code=3)
+        die("no PDF attachments found for item %s" % args.key, code=EXIT_NOTFOUND)
     for p in pdfs:
         print(p["path"])
 
 
 def cmd_collections(args):
-    cfg = require_config()
+    cfg = require_config(args)
     data, total = api_list(cfg, "collections", None, args.all, args.limit)
     if args.json:
         print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -338,7 +387,7 @@ def cmd_collections(args):
 
 
 def cmd_tags(args):
-    cfg = require_config()
+    cfg = require_config(args)
     data, total = api_list(cfg, "tags", None, args.all, args.limit)
     if args.json:
         print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -401,14 +450,24 @@ def _read_source(source):
     return source  # inline JS
 
 
+# Heuristic: does the JS look like it writes to the library?
+WRITE_RE = re.compile(
+    r"\b(saveTx|eraseTx|trashTx|\.save\s*\(|\.erase\s*\(|addTag|removeTag|"
+    r"addToCollection|removeFromCollection|setField|setCreators|setNote|"
+    r"Zotero\.Tags\.(rename|purge|removeFromLibraries?)|Zotero\.Items\.(merge|trashTx|eraseTx))"
+)
+
+
 def cmd_exec(args):
-    cfg = require_config()
+    cfg = require_config(args)
     code = _read_source(args.source)
+    if not args.dry_run and WRITE_RE.search(code):
+        confirm_write(args, "This script appears to modify the library (writes detected).")
     if args.dry_run:
         indented = "\n".join("    " + line for line in code.splitlines())
         env = zotexec(cfg, DRYRUN_PREAMBLE % indented)
         if not env.get("ok"):
-            die(env.get("error") or "unknown error from zotexec", code=2)
+            die(env.get("error") or "unknown error from zotexec", code=EXIT_CONN)
         res = env.get("result") or {}
         writes = res.get("wouldWrite") or []
         print("DRY-RUN — no changes were persisted.")
@@ -433,7 +492,7 @@ def cmd_exec(args):
         elif result is not None:
             print(result)
     else:
-        die(env.get("error") or "unknown error from zotexec", code=2)
+        die(env.get("error") or "unknown error from zotexec", code=EXIT_CONN)
 
 
 FIELD_ALIASES = {
@@ -482,13 +541,25 @@ def _resolve_collection_js(arg):
 
 
 def cmd_export(args):
-    cfg = require_config()
+    cfg = require_config(args)
     fmt = args.format
     if fmt in ("bibtex", "biblatex", "ris"):
         # resolve to a collection key, then use the read API's native exporter
         key = run_js(cfg, _resolve_collection_js(args.collection) + "return col.key;")
         _, body = http_get(api_url(cfg, "collections/%s/items/top" % key, {"format": fmt, "limit": 100}))
         _write_or_print(args.out, body)
+        return
+    if fmt == "csljson":
+        # standard bibliographic interchange, via Zotero's own CSL-JSON serializer
+        code = _resolve_collection_js(args.collection) + (
+            "var items = col.getChildItems().filter(function(i){return i.isRegularItem();});\n"
+            "return items.map(function(it){ return Zotero.Utilities.Item.itemToCSLJSON"
+            "  ? Zotero.Utilities.Item.itemToCSLJSON(it) : Zotero.Utilities.itemToCSLJSON(it); });"
+        )
+        data = run_js(cfg, code)
+        _write_or_print(args.out, json.dumps(data, indent=2, ensure_ascii=False))
+        if args.out:
+            info("Wrote %d items (CSL-JSON) to %s" % (len(data), args.out))
         return
     # json / csv: build structured data via the JS API
     code = _JS_ITEM_MAP + _resolve_collection_js(args.collection) + (
@@ -525,8 +596,18 @@ def _write_or_print(out, text):
         print(text)
 
 
+def _project(res, detail):
+    """Token diet: drop the heavy `abstract` field from item lists unless the
+    caller asked for --detail full."""
+    if detail == "full":
+        return res
+    for it in res.get("items", []):
+        it.pop("abstract", None)
+    return res
+
+
 def cmd_missing(args):
-    cfg = require_config()
+    cfg = require_config(args)
     field = FIELD_ALIASES.get(args.field.lower(), args.field)
     scope = ""
     if args.collection:
@@ -546,7 +627,7 @@ def cmd_missing(args):
     ) % (field, field)
     res = run_js(cfg, code)
     if args.json:
-        print(json.dumps(res, indent=2, ensure_ascii=False))
+        print(json.dumps(_project(res, args.detail), indent=2, ensure_ascii=False))
         return
     print("%d of %d items are missing '%s':" % (res["missing"], res["total"], res["field"]))
     for it in res["items"]:
@@ -554,7 +635,7 @@ def cmd_missing(args):
 
 
 def cmd_author(args):
-    cfg = require_config()
+    cfg = require_config(args)
     code = _JS_ITEM_MAP + (
         "var q = %r.toLowerCase();\n"
         "var s = new Zotero.Search(); s.libraryID = Zotero.Libraries.userLibraryID;\n"
@@ -568,7 +649,7 @@ def cmd_author(args):
     ) % (args.name, args.name)
     res = run_js(cfg, code)
     if args.json:
-        print(json.dumps(res, indent=2, ensure_ascii=False))
+        print(json.dumps(_project(res, args.detail), indent=2, ensure_ascii=False))
         return
     print("%d items with author matching '%s':" % (res["count"], res["query"]))
     for it in res["items"]:
@@ -577,7 +658,7 @@ def cmd_author(args):
 
 
 def cmd_notes(args):
-    cfg = require_config()
+    cfg = require_config(args)
     key = resolve_key(cfg, args.key)
     code = (
         "var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);\n"
@@ -597,7 +678,7 @@ def cmd_notes(args):
 
 
 def cmd_note(args):
-    cfg = require_config()
+    cfg = require_config(args)
     key = resolve_key(cfg, args.key)
     if args.file:
         with open(args.file, "r", encoding="utf-8") as fh:
@@ -616,18 +697,27 @@ def cmd_note(args):
         print("  %s" % preview[:200])
         return
     code = (
+        "var html = %s; var ifNotExists = %s;\n"
         "var parent = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);\n"
         "if (!parent) return { error: 'item not found: ' + %r };\n"
-        "var note = new Zotero.Item('note'); note.setNote(%s); note.parentID = parent.id;\n"
+        "if (ifNotExists) {\n"
+        "  var exists = parent.getNotes().map(function(i){return Zotero.Items.get(i).getNote();})\n"
+        "    .some(function(n){ return n === html; });\n"
+        "  if (exists) return { skipped: true, parent: parent.key };\n"
+        "}\n"
+        "var note = new Zotero.Item('note'); note.setNote(html); note.parentID = parent.id;\n"
         "var id = await note.saveTx();\n"
         "return { noteKey: Zotero.Items.get(id).key, parent: parent.key };"
-    ) % (key, key, json.dumps(html))
+    ) % (json.dumps(html), "true" if args.if_not_exists else "false", key, key)
     res = run_js(cfg, code)
+    if res.get("skipped"):
+        info("An identical note already exists on %s; skipped." % res["parent"])
+        return
     print("Added note %s to item %s" % (res["noteKey"], res["parent"]))
 
 
 def cmd_backup(args):
-    cfg = require_config()
+    cfg = require_config(args)
     data_dir = run_js(cfg, "return Zotero.DataDirectory.dir;")
     src = os.path.join(data_dir, "zotero.sqlite")
     if not os.path.exists(src):
@@ -650,7 +740,7 @@ def cmd_backup(args):
 
 
 def cmd_lint(args):
-    cfg = require_config()
+    cfg = require_config(args)
     code = (
         "var s = new Zotero.Search(); s.libraryID = Zotero.Libraries.userLibraryID;\n"
         "s.addCondition('itemType','isNot','attachment'); s.addCondition('itemType','isNot','note');\n"
@@ -693,6 +783,280 @@ def cmd_lint(args):
             lambda r: "%-10s %s" % (r["key"], (r["title"] or "")[:60]))
     section("Items with no creators", res["noCreators"],
             lambda r: "%-10s %s" % (r["key"], (r["title"] or "")[:60]))
+
+
+# --------------------------------------------------------------------------- #
+# Tier 1 — add by identifier, dedupe, safe edits, annotations
+# --------------------------------------------------------------------------- #
+def cmd_add(args):
+    cfg = require_config(args)
+    code = (
+        "var identifier = %r, kind = %r, colArg = %r, wantPdf = %s;\n"
+        "var translate = new Zotero.Translate.Search();\n"
+        "var ident = {};\n"
+        "if (kind === 'doi') ident.DOI = identifier;\n"
+        "else if (kind === 'isbn') ident.ISBN = identifier;\n"
+        "else if (kind === 'arxiv') ident.arXiv = identifier;\n"
+        "else return { error: 'unsupported kind: ' + kind + \" (use doi/isbn/arxiv)\" };\n"
+        "translate.setIdentifier(ident);\n"
+        "var translators = await translate.getTranslators();\n"
+        "if (!translators || !translators.length) return { error: 'no metadata found for ' + kind + ' ' + identifier };\n"
+        "translate.setTranslator(translators[0]);\n"
+        "var opts = { libraryID: Zotero.Libraries.userLibraryID };\n"
+        "if (colArg) { var col = await Zotero.Collections.getByLibraryAndKey(Zotero.Libraries.userLibraryID, colArg)"
+        " || Zotero.Collections.getByLibrary(Zotero.Libraries.userLibraryID, true).find(function(c){return c.name===colArg;});"
+        " if (col) opts.collections = [col.id]; }\n"
+        "var items = await translate.translate(opts);\n"
+        "var out = [];\n"
+        "for (var it of items) {\n"
+        "  var rec = { key: it.key, title: it.getField('title'), type: it.itemType, pdf: null };\n"
+        "  if (wantPdf) { try { var att = await Zotero.Attachments.addAvailablePDF(it); if (att) rec.pdf = 'attached'; } catch (e) { rec.pdfError = String(e); } }\n"
+        "  out.push(rec);\n"
+        "}\n"
+        "return { added: out };"
+    ) % (args.identifier, args.kind, args.collection or "", "true" if args.pdf else "false")
+    res = run_js(cfg, code)
+    added = res.get("added", [])
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    if not added:
+        die("nothing added", code=EXIT_NOTFOUND)
+    for a in added:
+        pdf = "  [PDF %s]" % a["pdf"] if a.get("pdf") else ("  [PDF failed]" if a.get("pdfError") else "")
+        print("Added %-10s %-14s %s%s" % (a["key"], a["type"], (a["title"] or "")[:60], pdf))
+
+
+def cmd_dedupe(args):
+    cfg = require_config(args)
+    if args.merge:
+        where = ("collection '%s'" % args.collection) if args.collection else "the WHOLE LIBRARY"
+        confirm_write(args, "Merging duplicates across %s modifies items (take a `zot backup` first)." % where)
+    scope = ""
+    if args.collection:
+        scope = _resolve_collection_js(args.collection) + (
+            "var items = col.getChildItems().filter(function(i){return i.isRegularItem();});\n"
+        )
+    else:
+        scope = (
+            "var s = new Zotero.Search(); s.libraryID = Zotero.Libraries.userLibraryID;\n"
+            "s.addCondition('itemType','isNot','attachment'); s.addCondition('itemType','isNot','note');\n"
+            "var ids = await s.search(); var items = (await Zotero.Items.getAsync(ids)).filter(function(i){return i.isRegularItem();});\n"
+        )
+    code = (
+        "var doMerge = %s, by = %r;\n"
+    ) % ("true" if args.merge else "false", args.by) + scope + (
+        "function norm(t){ return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }\n"
+        "var groups = {};\n"
+        "for (var it of items) {\n"
+        "  var kv = (by === 'doi') ? (it.getField('DOI')||'').toLowerCase().trim() : norm(it.getField('title'));\n"
+        "  if (!kv) continue; (groups[kv] = groups[kv] || []).push(it);\n"
+        "}\n"
+        "var dup = Object.keys(groups).map(function(k){return groups[k];}).filter(function(g){return g.length>1;});\n"
+        "var report = dup.map(function(g){ return g.map(function(it){ return { key: it.key, title: it.getField('title'), year: (String(it.getField('date')||'').match(/\\d{4}/)||[null])[0] }; }); });\n"
+        "var merged = 0;\n"
+        "if (doMerge) { for (var g of dup) { g.sort(function(a,b){ return String(a.dateAdded).localeCompare(String(b.dateAdded)); });\n"
+        "  var master = g[0], others = g.slice(1); await Zotero.Items.merge(master, others); merged += others.length; } }\n"
+        "return { by: by, groups: report.length, duplicates: report, mergedAway: merged };"
+    )
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print("Found %d duplicate group(s) by %s." % (res["groups"], res["by"]))
+    for g in res["duplicates"][: args.samples]:
+        print("  --")
+        for it in g:
+            print("    %-10s [%s] %s" % (it["key"], it.get("year") or "????", (it["title"] or "")[:60]))
+    if res["groups"] > args.samples:
+        info("  ... (%d more groups)" % (res["groups"] - args.samples))
+    if args.merge:
+        print("Merged away %d duplicate item(s)." % res["mergedAway"])
+    elif res["groups"]:
+        info("Re-run with --merge (and --yes) to consolidate, keeping the oldest as master.")
+
+
+def cmd_tag(args):
+    cfg = require_config(args)
+    keys = [resolve_key(cfg, k) for k in (args.keys or [])]
+    if args.action in ("rm", "rename", "purge") or (args.action == "add" and len(keys) > 5):
+        confirm_write(args, "This modifies tags on %s." % (("%d items" % len(keys)) if keys else "the whole library"))
+    code = (
+        "var action=%r, tag=%r, newTag=%r, keys=%s; var lib=Zotero.Libraries.userLibraryID; var n=0;\n"
+        "if (action==='rename') { await Zotero.Tags.rename(lib, tag, newTag); return { renamed:[tag,newTag] }; }\n"
+        "if (action==='purge') { await Zotero.Tags.purge(lib); return { purged:true }; }\n"
+        "await Zotero.DB.executeTransaction(async function(){ for (var k of keys){ var it=await Zotero.Items.getByLibraryAndKeyAsync(lib,k); if(!it) continue; if(action==='add') it.addTag(tag); else it.removeTag(tag); await it.save(); n++; } });\n"
+        "return { action: action, tag: tag, items: n };"
+    ) % (args.action, args.tag or "", getattr(args, "new", None) or "", json.dumps(keys))
+    res = run_js(cfg, code)
+    if res.get("renamed"):
+        print("Renamed tag %r -> %r" % tuple(res["renamed"]))
+    elif res.get("purged"):
+        print("Purged unused tags.")
+    else:
+        print("%sed tag %r on %d item(s)." % (res["action"].capitalize(), res["tag"], res["items"]))
+
+
+def cmd_set(args):
+    cfg = require_config(args)
+    keys = [resolve_key(cfg, k) for k in _keys_from(args.keys)]
+    confirm_write(args, "This sets '%s' on %d item(s)." % (args.field, len(keys)))
+    field = FIELD_ALIASES.get(args.field.lower(), args.field)
+    code = (
+        "var field=%r, value=%r, keys=%s; var lib=Zotero.Libraries.userLibraryID; var n=0, errs=[];\n"
+        "await Zotero.DB.executeTransaction(async function(){ for (var k of keys){ var it=await Zotero.Items.getByLibraryAndKeyAsync(lib,k); if(!it){errs.push(k);continue;} try{ it.setField(field, value); await it.save(); n++; }catch(e){ errs.push(k+': '+e); } } });\n"
+        "return { field: field, items: n, errors: errs };"
+    ) % (field, args.value, json.dumps(keys))
+    res = run_js(cfg, code)
+    print("Set %s on %d item(s)." % (res["field"], res["items"]))
+    if res.get("errors"):
+        info("errors: " + "; ".join(map(str, res["errors"])))
+
+
+def cmd_move(args):
+    cfg = require_config(args)
+    keys = [resolve_key(cfg, k) for k in _keys_from(args.keys)]
+    confirm_write(args, "This adds %d item(s) to collection '%s'." % (len(keys), args.collection))
+    code = (
+        "var colArg=%r, keys=%s; var lib=Zotero.Libraries.userLibraryID;\n"
+        "var col = await Zotero.Collections.getByLibraryAndKey(lib, colArg) || Zotero.Collections.getByLibrary(lib,true).find(function(c){return c.name===colArg;});\n"
+        "if(!col) return { error:'collection not found: '+colArg };\n"
+        "var n=0; await Zotero.DB.executeTransaction(async function(){ for(var k of keys){ var it=await Zotero.Items.getByLibraryAndKeyAsync(lib,k); if(!it) continue; it.addToCollection(col.id); await it.save(); n++; } });\n"
+        "return { collection: col.name, key: col.key, moved: n };"
+    ) % (args.collection, json.dumps(keys))
+    res = run_js(cfg, code)
+    print("Added %d item(s) to '%s' (%s)." % (res["moved"], res["collection"], res["key"]))
+
+
+def cmd_collection(args):
+    cfg = require_config(args)
+    code = (
+        "var name=%r, parentArg=%r; var lib=Zotero.Libraries.userLibraryID;\n"
+        "var col=new Zotero.Collection(); col.name=name; col.libraryID=lib;\n"
+        "if(parentArg){ var p=await Zotero.Collections.getByLibraryAndKey(lib,parentArg)||Zotero.Collections.getByLibrary(lib,true).find(function(c){return c.name===parentArg;}); if(!p) return {error:'parent not found: '+parentArg}; col.parentID=p.id; }\n"
+        "var id=await col.saveTx();\n"
+        "return { key: Zotero.Collections.get(id).key, name: name };"
+    ) % (args.name, args.parent or "")
+    res = run_js(cfg, code)
+    print("Created collection '%s' (%s)." % (res["name"], res["key"]))
+
+
+def cmd_annotations(args):
+    cfg = require_config(args)
+    key = resolve_key(cfg, args.key)
+    if args.to_note:
+        confirm_write(args, "This creates a note from the PDF's annotations on %s." % key)
+    code = (
+        "var key=%r, toNote=%s;\n"
+        "var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, key);\n"
+        "if(!it) return { error:'item not found: '+key };\n"
+        "var pdf = it.isAttachment()? it : it.getAttachments().map(function(id){return Zotero.Items.get(id);}).find(function(a){return a.attachmentContentType==='application/pdf';});\n"
+        "if(!pdf) return { error:'no PDF attachment for '+key };\n"
+        "var anns = pdf.getAnnotations().map(function(a){ return { type:a.annotationType, page:a.annotationPageLabel, color:a.annotationColor, text:a.annotationText||'', comment:a.annotationComment||'' }; });\n"
+        "var result = { itemKey: it.key, title: it.getField('title'), count: anns.length, annotations: anns };\n"
+        "if (toNote && anns.length) {\n"
+        "  var html='<h1>Anotaciones (extraídas)</h1>'+anns.map(function(a){ return '<p><b>p.'+(a.page||'?')+'</b> '+(a.text?('“'+a.text+'”'):'')+(a.comment?(' — '+a.comment):'')+'</p>'; }).join('');\n"
+        "  var note=new Zotero.Item('note'); note.setNote(html); note.parentID = it.isAttachment()? (it.parentID||it.id) : it.id; var nid=await note.saveTx(); result.noteKey=Zotero.Items.get(nid).key;\n"
+        "}\n"
+        "return result;"
+    ) % (key, "true" if args.to_note else "false")
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print("%s — %d annotation(s)" % (res["title"] or res["itemKey"], res["count"]))
+    for a in res["annotations"][: args.samples]:
+        t = ("“%s”" % a["text"]) if a["text"] else ""
+        c = (" — %s" % a["comment"]) if a["comment"] else ""
+        print("  p.%-4s %-9s %s%s" % (a.get("page") or "?", a["type"], t[:60], c[:40]))
+    if res["count"] > args.samples:
+        info("  ... (%d more)" % (res["count"] - args.samples))
+    if res.get("noteKey"):
+        print("Wrote annotations to note %s" % res["noteKey"])
+
+
+# --------------------------------------------------------------------------- #
+# Tier 2 — stats, bib, recent, sync, related
+# --------------------------------------------------------------------------- #
+def cmd_stats(args):
+    cfg = require_config(args)
+    code = (
+        "var s=new Zotero.Search(); s.libraryID=Zotero.Libraries.userLibraryID;\n"
+        "s.addCondition('itemType','isNot','attachment'); s.addCondition('itemType','isNot','note');\n"
+        "var ids=await s.search(); var items=(await Zotero.Items.getAsync(ids)).filter(function(i){return i.isRegularItem();});\n"
+        "var byType={}, byYear={}, noAbs=0, withPdf=0;\n"
+        "for(var it of items){ byType[it.itemType]=(byType[it.itemType]||0)+1;\n"
+        "  var y=(String(it.getField('date')||'').match(/\\d{4}/)||['(none)'])[0]; byYear[y]=(byYear[y]||0)+1;\n"
+        "  if(!String(it.getField('abstractNote')||'').trim()) noAbs++;\n"
+        "  if(it.getAttachments().map(function(a){return Zotero.Items.get(a);}).some(function(a){return a.attachmentContentType==='application/pdf';})) withPdf++;\n"
+        "}\n"
+        "var cols=Zotero.Collections.getByLibrary(Zotero.Libraries.userLibraryID, true).length;\n"
+        "var tags=await Zotero.Tags.getAll(Zotero.Libraries.userLibraryID);\n"
+        "return { totalItems: items.length, collections: cols, tags: ((tags&&tags.length)||0), withPdf: withPdf, withoutPdf: items.length-withPdf, withoutAbstract: noAbs, byType: byType, byYear: byYear };"
+    )
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print("Library: %d items · %d collections · %d tags" % (res["totalItems"], res["collections"], res["tags"] or 0))
+    print("PDFs: %d with · %d without   |   %d without abstract" % (res["withPdf"], res["withoutPdf"], res["withoutAbstract"]))
+    print("\nBy type:")
+    for k, v in sorted(res["byType"].items(), key=lambda x: -x[1]):
+        print("  %4d  %s" % (v, k))
+    print("\nBy year:")
+    for y in sorted(res["byYear"], reverse=True):
+        print("  %-8s %d" % (y, res["byYear"][y]))
+
+
+def cmd_bib(args):
+    cfg = require_config(args)
+    keys = [resolve_key(cfg, k) for k in args.keys]
+    params = {"itemKey": ",".join(keys), "format": "bib", "style": args.style}
+    if args.linkwrap:
+        params["linkwrap"] = 1
+    _, body = http_get(api_url(cfg, "items", params))
+    _write_or_print(args.out, body)
+
+
+def cmd_recent(args):
+    cfg = require_config(args)
+    params = {"sort": "dateAdded", "direction": "desc"}
+    items, total = api_list(cfg, "items/top", params, False, args.limit)
+    _print_items(items, args.json)
+
+
+def cmd_sync(args):
+    cfg = require_config(args)
+    res = run_js(cfg, "try { await Zotero.Sync.Runner.sync({background:false}); return {started:true}; } catch(e){ return {error:String(e)}; }")
+    if res.get("started"):
+        print("Sync triggered.")
+    else:
+        die("could not sync: %s (is a Zotero sync account configured?)" % res.get("error"), code=EXIT_GENERIC)
+
+
+def cmd_related(args):
+    cfg = require_config(args)
+    key = resolve_key(cfg, args.key)
+    code = (
+        "var it=await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);\n"
+        "if(!it) return { error:'item not found: '+%r };\n"
+        "var out=[]; for(var rk of (it.relatedItems||[])){ var r=await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, rk); if(r) out.push({ key:r.key, title:r.getField('title') }); }\n"
+        "return { itemKey: it.key, related: out };"
+    ) % (key, key)
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print("%s — %d related" % (res["itemKey"], len(res["related"])))
+    for r in res["related"]:
+        print("  %-10s %s" % (r["key"], (r["title"] or "")[:64]))
+
+
+def _keys_from(keys):
+    """Accept keys as CLI args, or read them from stdin when the sole arg is '-'."""
+    if keys == ["-"] or not keys:
+        return [ln.strip() for ln in sys.stdin.read().split() if ln.strip()]
+    return keys
 
 
 def cmd_init(args):
@@ -763,110 +1127,179 @@ def _print_items(items, as_json):
 # argparse
 # --------------------------------------------------------------------------- #
 def build_parser():
-    p = argparse.ArgumentParser(prog="zot", description="Control a local Zotero instance.")
+    # Global flags shared by every subcommand (config precedence: flags > env > file).
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--base", help="Zotero base URL (or $ZOTEXEC_BASE)")
+    common.add_argument("--token", help="zotexec token (or $ZOTEXEC_TOKEN)")
+    common.add_argument("--user-id", dest="user_id", help="library userID (or $ZOTEXEC_USER_ID)")
+    common.add_argument("-q", "--quiet", action="store_true", help="suppress non-essential notices")
+    common.add_argument("--debug", action="store_true", help="verbose diagnostics to stderr")
+    common.add_argument("-y", "--yes", action="store_true", help="assume yes; don't prompt for writes")
+
+    p = argparse.ArgumentParser(
+        prog="zot",
+        description="Control a local Zotero instance. Reads use the local HTTP API; "
+        "writes go through the zotero-exec plugin. Global flags (--json, -q, "
+        "--yes, --base/--token/--user-id) go after the subcommand. Exit codes: "
+        "0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser("ping", help="check the read API and the zotexec endpoint")
-    sp.set_defaults(func=cmd_ping)
+    def add(name, func, help):
+        sp = sub.add_parser(name, help=help, parents=[common])
+        sp.set_defaults(func=func)
+        return sp
 
-    sp = sub.add_parser("init", help="generate token, write config, auto-detect userID")
-    sp.set_defaults(func=cmd_init)
+    add("ping", cmd_ping, "check the read API and the zotexec endpoint") \
+        .add_argument("--json", action="store_true")
+    add("init", cmd_init, "generate token, write config, auto-detect userID")
 
-    sp = sub.add_parser("search", help="full-text search items (read API)")
+    sp = add("search", cmd_search, "full-text search items (read API)")
     sp.add_argument("query")
     sp.add_argument("--limit", type=int, default=25)
     sp.add_argument("--all", action="store_true", help="fetch all results (paginate)")
     sp.add_argument("--item-type", dest="item_type")
     sp.add_argument("--tag")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_search)
 
-    sp = sub.add_parser("get", help="fetch one item by Zotero key or BBT citekey (read API)")
-    sp.add_argument("key", help="Zotero item key, or a Better BibTeX citekey (prefix with @ to force)")
+    sp = add("get", cmd_get, "fetch one item by Zotero key or BBT citekey")
+    sp.add_argument("key", help="Zotero item key, or a BBT citekey (prefix @ to force)")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_get)
 
-    sp = sub.add_parser("cite", help="resolve a Better BibTeX citekey to item key + PDF path(s)")
+    sp = add("cite", cmd_cite, "resolve a BBT citekey to item key + PDF path(s)")
     sp.add_argument("citekey")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_cite)
 
-    sp = sub.add_parser("pdf", help="print local path(s) of an item's PDF(s), by key or citekey")
-    sp.add_argument("key", help="Zotero item/attachment key, or a Better BibTeX citekey (prefix with @ to force)")
+    sp = add("pdf", cmd_pdf, "print local path(s) of an item's PDF(s), by key or citekey")
+    sp.add_argument("key", help="item/attachment key, or a BBT citekey (prefix @ to force)")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_pdf)
 
-    sp = sub.add_parser("collections", help="list collections (read API)")
+    sp = add("collections", cmd_collections, "list collections (read API)")
     sp.add_argument("--limit", type=int, default=100)
     sp.add_argument("--all", action="store_true", help="fetch all (paginate)")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_collections)
 
-    sp = sub.add_parser("tags", help="list tags (read API)")
+    sp = add("tags", cmd_tags, "list tags (read API)")
     sp.add_argument("--limit", type=int, default=100)
     sp.add_argument("--all", action="store_true", help="fetch all (paginate)")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_tags)
 
-    sp = sub.add_parser("export", help="export a collection's items (by key or name)")
+    sp = add("export", cmd_export, "export a collection's items (by key or name)")
     sp.add_argument("collection", help="collection key or name")
-    sp.add_argument("--format", choices=["json", "csv", "bibtex", "biblatex", "ris"], default="json")
+    sp.add_argument("--format", choices=["json", "csv", "csljson", "bibtex", "biblatex", "ris"], default="json")
     sp.add_argument("--out", help="write to file instead of stdout")
-    sp.set_defaults(func=cmd_export)
 
-    sp = sub.add_parser("missing", help="list items missing a field (abstract/date/doi/url/...)")
-    sp.add_argument("field", help="field name or alias: abstract, date, doi, url, publisher, publication")
+    sp = add("missing", cmd_missing, "list items missing a field (abstract/date/doi/url/...)")
+    sp.add_argument("field", help="field or alias: abstract, date, doi, url, publisher, publication")
     sp.add_argument("--collection", help="limit to a collection (key or name)")
+    sp.add_argument("--detail", choices=["concise", "full"], default="concise", help="full keeps abstracts")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_missing)
 
-    sp = sub.add_parser("author", help="list items whose author matches a name")
+    sp = add("author", cmd_author, "list items whose author matches a name")
     sp.add_argument("name")
+    sp.add_argument("--detail", choices=["concise", "full"], default="concise", help="full keeps abstracts")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_author)
 
-    sp = sub.add_parser("notes", help="list an item's child notes (by key or citekey)")
+    sp = add("add", cmd_add, "add an item by identifier (doi/isbn/arxiv), with optional PDF")
+    sp.add_argument("kind", choices=["doi", "isbn", "arxiv"])
+    sp.add_argument("identifier")
+    sp.add_argument("--pdf", action="store_true", help="also try to attach an open-access PDF")
+    sp.add_argument("--collection", help="add to this collection (key or name)")
+    sp.add_argument("--json", action="store_true")
+
+    sp = add("dedupe", cmd_dedupe, "find (and optionally merge) duplicate items")
+    sp.add_argument("--by", choices=["title", "doi"], default="title")
+    sp.add_argument("--collection", help="limit to a collection (key or name); else whole library")
+    sp.add_argument("--merge", action="store_true", help="merge each group (keeps oldest as master)")
+    sp.add_argument("--samples", type=int, default=10)
+    sp.add_argument("--json", action="store_true")
+
+    sp = add("tag", cmd_tag, "manage tags: add/rm on items, or rename/purge library-wide")
+    sp.add_argument("action", choices=["add", "rm", "rename", "purge"])
+    sp.add_argument("tag", nargs="?", help="the tag (for add/rm/rename)")
+    sp.add_argument("keys", nargs="*", help="item keys/citekeys (for add/rm; '-' reads stdin)")
+    sp.add_argument("--new", help="new tag name (for rename)")
+
+    sp = add("set", cmd_set, "set a field on one or more items")
+    sp.add_argument("field", help="field or alias (e.g. abstract, publisher, date)")
+    sp.add_argument("value")
+    sp.add_argument("keys", nargs="+", help="item keys/citekeys ('-' reads stdin)")
+
+    sp = add("move", cmd_move, "add items to a collection (by key or name)")
+    sp.add_argument("collection")
+    sp.add_argument("keys", nargs="+", help="item keys/citekeys ('-' reads stdin)")
+
+    sp = add("collection", cmd_collection, "create a collection (optionally under a parent)")
+    sp.add_argument("name")
+    sp.add_argument("--parent", help="parent collection (key or name)")
+
+    sp = add("annotations", cmd_annotations, "list a PDF's annotations; --to-note extracts them")
+    sp.add_argument("key")
+    sp.add_argument("--to-note", dest="to_note", action="store_true", help="write annotations into a child note")
+    sp.add_argument("--samples", type=int, default=20)
+    sp.add_argument("--json", action="store_true")
+
+    sp = add("stats", cmd_stats, "library analytics (counts by type/year, PDFs, etc.)")
+    sp.add_argument("--json", action="store_true")
+
+    sp = add("bib", cmd_bib, "render a formatted bibliography for items")
+    sp.add_argument("keys", nargs="+", help="item keys or citekeys")
+    sp.add_argument("--style", default="apa", help="CSL style id (e.g. apa, chicago-note-bibliography)")
+    sp.add_argument("--linkwrap", action="store_true")
+    sp.add_argument("--out")
+
+    sp = add("recent", cmd_recent, "list recently added items")
+    sp.add_argument("--limit", type=int, default=20)
+    sp.add_argument("--json", action="store_true")
+
+    add("sync", cmd_sync, "trigger a Zotero sync (needs a sync account)")
+
+    sp = add("related", cmd_related, "list items related to an item")
     sp.add_argument("key")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_notes)
 
-    sp = sub.add_parser("note", help="add a child note to an item (by key or citekey)")
+    sp = add("notes", cmd_notes, "list an item's child notes (by key or citekey)")
+    sp.add_argument("key")
+    sp.add_argument("--json", action="store_true")
+
+    sp = add("note", cmd_note, "add a child note to an item (by key or citekey)")
     sp.add_argument("key")
     sp.add_argument("--file", help="read note body (HTML or text) from a file")
     sp.add_argument("--text", help="note body as a string")
+    sp.add_argument("--if-not-exists", dest="if_not_exists", action="store_true",
+                    help="skip if an identical note already exists (idempotent)")
     sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="show what would be added, don't write")
-    sp.set_defaults(func=cmd_note)
 
-    sp = sub.add_parser("backup", help="snapshot zotero.sqlite to a timestamped file")
+    sp = add("backup", cmd_backup, "snapshot zotero.sqlite to a timestamped file")
     sp.add_argument("--dir", help="destination dir (default: ~/.config/zotero-exec/backups)")
-    sp.set_defaults(func=cmd_backup)
+    sp.add_argument("--json", action="store_true")
 
-    sp = sub.add_parser("lint", help="report data-quality issues in the library")
+    sp = add("lint", cmd_lint, "report data-quality issues in the library")
     sp.add_argument("--samples", type=int, default=10, help="examples to show per issue")
     sp.add_argument("--json", action="store_true")
-    sp.set_defaults(func=cmd_lint)
 
-    sp = sub.add_parser(
-        "exec",
-        help="run JS via /zotexec. SOURCE is a file, '-' for stdin, or inline JS.",
-    )
+    sp = add("exec", cmd_exec, "run JS via /zotexec. SOURCE is a file, '-' for stdin, or inline JS.")
     sp.add_argument("source")
     sp.add_argument("--dry-run", dest="dry_run", action="store_true",
                     help="intercept writes and report what would change (best-effort)")
-    sp.set_defaults(func=cmd_exec)
 
     return p
 
 
 def main(argv=None):
+    global QUIET, DEBUG
     parser = build_parser()
     args = parser.parse_args(argv)
+    QUIET = getattr(args, "quiet", False)
+    DEBUG = getattr(args, "debug", False)
     try:
         args.func(args)
     except urllib.error.HTTPError as e:
-        die("HTTP %s: %s" % (e.code, e.read().decode("utf-8", "replace")))
+        die("HTTP %s: %s" % (e.code, e.read().decode("utf-8", "replace")), code=EXIT_CONN)
     except urllib.error.URLError as e:
-        die("cannot reach Zotero (%s). Is it running?" % e.reason)
+        die("cannot reach Zotero (%s). Is it running?" % e.reason, code=EXIT_CONN)
+    except BrokenPipeError:
+        pass
 
 
 if __name__ == "__main__":

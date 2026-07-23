@@ -19,7 +19,7 @@ for why.
 | Path | What |
 |------|------|
 | `plugin/zotero-exec/` | The write endpoint (`POST /zotexec`), ~200 lines. |
-| `cli/zot` | Stdlib-only Python CLI. Reads: `search`, `get`, `cite`, `pdf`, `collections`, `tags`. Operations: `export`, `missing`, `author`, `notes`, `note`, `lint`. Write escape hatch: `exec`. Safety: `backup`. Setup: `ping`, `init`. |
+| `cli/zot` | Stdlib-only Python CLI. **Read/analyze:** `search`, `get`, `cite`, `pdf`, `collections`, `tags`, `export`, `missing`, `author`, `stats`, `recent`, `bib`, `annotations`, `related`, `notes`, `lint`. **Edit/organize** (safe writes): `add`, `dedupe`, `tag`, `set`, `move`, `collection`, `note`. **Escape hatch:** `exec`. **Safety/setup:** `backup`, `ping`, `init`. Global flags: `--json`, `-q`, `--yes`, `--base/--token/--user-id`. |
 | `skill/` | The `zotero` skill for Claude Code (SKILL.md + recipe book + evals). |
 | `docs/` | Install, security model, architecture. |
 | `install.sh` | Wires it all up. |
@@ -44,13 +44,17 @@ zot collections                         # list collections
 zot get ABCD1234                        # one item's fields (Zotero key or BBT citekey)
 zot cite myCitekey2025                   # resolve a Better BibTeX citekey -> key + PDF
 zot pdf myCitekey2025                    # PDF path (accepts key or citekey)
-zot export "My Collection" --format bibtex   # export a collection (json/csv/bibtex/…)
+zot export "My Collection" --format csljson   # export (json/csv/csljson/bibtex/ris)
 zot missing abstract --collection SS5MVVB6   # items lacking a field
 zot author "Ojeda"                            # items by an author
+zot stats                                     # library analytics
+zot add doi 10.1371/journal.pmed.0020124 --pdf   # import by identifier (+ OA PDF)
+zot dedupe --collection SS5MVVB6 --merge --yes   # find & merge duplicates (scoped)
+zot tag add "#revisar" ABCD1234 EFGH5678 --yes   # bulk tag
+zot set publisher "Lab TecnoSocial" ABCD1234 --yes
 zot note ABCD1234 --file summary.html         # add a child note
 zot backup                                    # snapshot the DB before big edits
 zot exec risky.js --dry-run                   # preview writes without persisting
-zot lint                                      # data-quality report
 zot exec 'return Zotero.version;'       # write path: run privileged JS
 zot exec my-script.js                   # ...from a file
 echo 'return 1+1;' | zot exec -         # ...from stdin
@@ -81,3 +85,13 @@ workflow (backup, sync-off, dry-run, test-small) for bulk or destructive edits.
 Arbitrary local JS execution, gated by a required token + browser-origin
 rejection + loopback binding. Read [`docs/security.md`](docs/security.md) before
 exposing anything. License: [MIT](LICENSE).
+
+## Development
+
+```bash
+python3 -m unittest discover -s tests   # run the CLI unit tests (stdlib only, no network)
+bash plugin/build.sh                     # rebuild dist/zotexec.xpi
+```
+
+Canonical sources live in `cli/` and `plugin/`; `install.sh` copies them into
+`skill/scripts/` so the skill is self-contained when shared.

@@ -39,6 +39,30 @@
         "Added the 2 most recently added items (by dateAdded) into 'Borradores'",
         "Confirmed the result, reporting the new collection key and the items moved"
       ]
+    },
+    {
+      "id": 3,
+      "name": "add-by-doi",
+      "prompt": "Add the paper with DOI 10.1371/journal.pmed.0020124 to my Zotero library and tell me its title.",
+      "expected_output": "Uses `zot add doi 10.1371/journal.pmed.0020124`, which fetches metadata and creates the item; reports the title (Ioannidis, 'Why Most Published Research Findings Are False').",
+      "files": [],
+      "assertions": [
+        "Used the `zot add` command (not hand-written exec) to import by DOI",
+        "The item was created with the correct title fetched from the DOI",
+        "Reported the resulting item key and title"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "library-stats",
+      "prompt": "Give me an overview of my Zotero library: how many items, what types, and how many have PDFs.",
+      "expected_output": "Runs `zot stats` and summarizes total items, counts by type, and with/without-PDF counts.",
+      "files": [],
+      "assertions": [
+        "Used `zot stats` rather than counting via ad-hoc exec",
+        "Reported total item count and a breakdown by item type",
+        "Reported how many items have vs. lack a PDF attachment"
+      ]
     }
   ]
 }

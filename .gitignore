@@ -8,5 +8,9 @@
 .DS_Store
 *.swp
 
+# Python
+__pycache__/
+*.pyc
+
 # skill-creator eval workspace (artefactos + backup)
 /zotero-workspace/

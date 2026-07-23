@@ -6,10 +6,12 @@ description: >-
   (read API + the zotero-exec write endpoint). Use whenever the user wants to
   query or modify their Zotero library, batch-edit references, manage tags or
   collections, find items missing metadata (no abstract/date/DOI), find
-  duplicates, export citations, or run arbitrary Zotero JS. Also use it to read
-  or ask questions about an item's PDF, summarize a document at multiple levels
-  (whole/chapter/section), read a PDF's highlights/annotations, or create notes
-  on items. Requires the zotero-exec plugin installed and Zotero running.
+  duplicates, export citations, or run arbitrary Zotero JS. Also use it to add
+  items by DOI/ISBN/arXiv, find and merge duplicates, edit fields/tags in bulk,
+  get library stats, format bibliographies, read or ask questions about an
+  item's PDF, summarize a document at multiple levels (whole/chapter/section),
+  read a PDF's highlights/annotations, or create notes on items. Requires the
+  zotero-exec plugin installed and Zotero running.
 ---
 
 # Zotero control (via the `zot` CLI)
@@ -49,20 +51,42 @@ that list (`search`, `collections`, `tags`) stop at `--limit` and print a
 
 These are thin, reliable commands built on the Zotero JS API — reach for them
 before writing ad-hoc JS, so you don't re-derive logic (or re-hit gotchas like
-the abstract-search one):
+the abstract-search one). Reads/analysis:
 
 ```bash
-zot export <collection|name> --format json|csv|bibtex|biblatex|ris [--out f]
+zot export <collection|name> --format json|csv|csljson|bibtex|biblatex|ris [--out f]
 zot missing abstract|date|doi|url [--collection KEY]   # items lacking a field
 zot author "Ojeda"                                      # items by an author
-zot notes <ITEMKEY>                                     # list an item's notes
-zot note  <ITEMKEY> --file note.html [--dry-run]        # add a child note
+zot stats                                               # library analytics
+zot recent [--limit N]                                  # recently added
+zot bib <key…|@citekey…> --style apa                    # formatted bibliography
+zot annotations <key> [--to-note]                       # PDF highlights (opt. → note)
+zot related <key>                                       # related items
+zot notes <key>                                         # list an item's notes
 zot lint                                                # data-quality report
+```
+
+Editing & organizing (these are **writes** — see safety below):
+
+```bash
+zot add doi|isbn|arxiv <id> [--pdf] [--collection C]    # import by identifier
+zot dedupe [--collection C] [--merge]                   # find/merge duplicates
+zot tag add|rm <tag> <key…>   |   tag rename <old> --new <n>   |   tag purge
+zot set <field> <value> <key…>                          # edit a field
+zot move <collection> <key…>                            # add items to a collection
+zot collection <name> [--parent K]                      # create a (sub)collection
+zot note <key> --file note.html [--if-not-exists]       # add a child note
 ```
 
 `zot missing` uses the reliable `getField` check, not the empty-string search
 condition (which silently returns 0 — see recipes.md). Use `exec` only for
 operations these commands don't cover.
+
+**Global flags** (all commands): `--json` (machine output), `-q/--quiet`,
+`--debug`, `--yes` (confirm writes non-interactively), and config overrides
+`--base/--token/--user-id` (or `ZOTEXEC_*` env). **Exit codes:** 0 ok, 1 error,
+2 connection/exec, 3 not-found, 4 config. For big `--json` reads, note that
+`author`/`missing` omit abstracts by default (`--detail full` to include them).
 
 ### Better BibTeX citekeys
 
@@ -121,12 +145,18 @@ short version:
 
 Arbitrary JS = full power over the library. Before any batch write or deletion:
 
+The write **commands** (`add`, `dedupe --merge`, `set`, `move`, bulk/removing
+`tag`, `exec` with detected writes) are safe-by-default: they refuse to run
+non-interactively unless you pass `--yes` (and prompt on a TTY). Before a bulk
+or destructive run:
+
 1. **Back up** with `zot backup` (snapshots `zotero.sqlite`, prints the path).
+   Especially before `zot dedupe --merge`.
 2. **Disable auto-sync** in Zotero → Preferences → Sync (so a mistake doesn't propagate).
-3. **Dry-run first**: `zot exec script.js --dry-run` intercepts writes and reports
-   what *would* change without persisting; show it to the user. (Best-effort — a
-   script that reads back its own new writes may error; the backup is the hard
-   guarantee.) For structured commands, `zot note … --dry-run` works too.
+3. **Dry-run / scope first**: `zot exec script.js --dry-run` intercepts writes and
+   reports what *would* change without persisting (best-effort — a script that reads
+   back its own new writes may error; the backup is the hard guarantee). Prefer
+   scoping `dedupe`/`missing` to `--collection` over the whole library.
 4. Apply to **1–2 items** and verify before running on the full set.
 5. Use `Zotero.DB.executeTransaction()` for large batches (see recipes).
 6. Deletions: prefer the trash (`item.deleted = true; saveTx()`), not

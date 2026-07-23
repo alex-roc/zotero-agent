@@ -35,12 +35,15 @@ body in-process and returns the result as JSON. This mirrors the well-known
 - **Layer 0 — `zotero-exec` plugin** (`plugin/zotero-exec/`): the endpoint.
   Token-protected, origin-guarded, loopback-only. Fully general — every recipe
   in the memory/reference book works over it unchanged.
-- **Layer 1 — `zot` CLI** (`cli/zot`): stdlib-only Python. `search`, `get`,
-  `cite`, `pdf`, `collections`, `tags` hit the fast read API (with `--all`
-  pagination); `export`, `missing`, `author`, `notes`, `note`, `lint` are
-  common operations built cleanly on the Zotero JS API; `exec` is the raw write
-  escape hatch (with `--dry-run`); `backup` snapshots the DB; `ping` validates
-  the stack; `init` is the config wizard.
+- **Layer 1 — `zot` CLI** (`cli/zot`): stdlib-only Python. Reads hit the fast
+  local API (`search`, `get`, `cite`, `pdf`, `collections`, `tags`, `recent`,
+  `bib`, with `--all` pagination). Higher-level operations are built cleanly on
+  the Zotero JS API (`export`, `missing`, `author`, `stats`, `annotations`,
+  `related`, `lint`) — and the write/edit verbs (`add` by identifier, `dedupe`,
+  `tag`, `set`, `move`, `collection`, `note`) too, each safe-by-default
+  (refuse non-interactive writes without `--yes`). `exec` is the raw escape
+  hatch (with `--dry-run`); `backup` snapshots the DB; `ping`/`init` set up.
+  Config precedence: flags > `ZOTEXEC_*` env > `~/.config/zotero-exec/config.json`.
 - **Layer 2 — `zotero` skill** (`skill/`): teaches an agent to drive `zot`,
   including the safe workflow for bulk/destructive operations.
 
