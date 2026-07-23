@@ -154,6 +154,38 @@ def cmd_get(args):
             print("%-20s %s" % (k, v))
 
 
+def cmd_pdf(args):
+    """Print the local path(s) of the PDF attachment(s) of an item."""
+    cfg = require_config()
+    code = """
+var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);
+if (!it) return { error: 'item not found: ' + %r };
+var out = [];
+var atts = it.isAttachment() ? [it.id] : it.getAttachments();
+for (var id of atts) {
+  var att = Zotero.Items.get(id);
+  if (att.attachmentContentType === 'application/pdf') {
+    out.push({ attachmentKey: att.key, path: att.getFilePath(), title: att.getField('title') });
+  }
+}
+return { itemKey: it.key, title: it.getField('title'), pdfs: out };
+""" % (args.key, args.key)
+    env = zotexec(cfg, code)
+    if not env.get("ok"):
+        die(env.get("error") or "zotexec error", code=2)
+    result = env.get("result") or {}
+    if result.get("error"):
+        die(result["error"], code=2)
+    pdfs = result.get("pdfs", [])
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    if not pdfs:
+        die("no PDF attachments found for item %s" % args.key, code=3)
+    for p in pdfs:
+        print(p["path"])
+
+
 def cmd_collections(args):
     cfg = require_config()
     status, body = http_get(api_url(cfg, "collections", {"limit": args.limit}))
@@ -290,6 +322,11 @@ def build_parser():
     sp.add_argument("key")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_get)
+
+    sp = sub.add_parser("pdf", help="print local path(s) of an item's PDF attachment(s)")
+    sp.add_argument("key", help="item key (or an attachment key)")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_pdf)
 
     sp = sub.add_parser("collections", help="list collections (read API)")
     sp.add_argument("--limit", type=int, default=200)

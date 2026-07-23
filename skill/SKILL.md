@@ -6,8 +6,10 @@ description: >-
   (read API + the zotero-exec write endpoint). Use whenever the user wants to
   query or modify their Zotero library, batch-edit references, manage tags or
   collections, find items missing metadata (no abstract/date/DOI), find
-  duplicates, export citations, or run arbitrary Zotero JS. Requires the
-  zotero-exec plugin installed and Zotero running.
+  duplicates, export citations, or run arbitrary Zotero JS. Also use it to read
+  or ask questions about an item's PDF, summarize a document at multiple levels
+  (whole/chapter/section), read a PDF's highlights/annotations, or create notes
+  on items. Requires the zotero-exec plugin installed and Zotero running.
 ---
 
 # Zotero control (via the `zot` CLI)
@@ -34,6 +36,7 @@ zot search "bolivia" --limit 25        # full-text search
 zot search "x" --tag "#digitalización" # filter by tag
 zot search "x" --item-type book        # filter by type
 zot get <ITEMKEY>                       # one item's fields
+zot pdf <ITEMKEY>                       # local path(s) of the item's PDF(s)
 zot collections                         # key, #items, name
 zot tags                                # #items, tag
 ```
@@ -60,6 +63,22 @@ For anything non-trivial, **write the JS to a file** in the scratchpad and run
 The full, canonical recipe book (create/edit items, collections, tags, delete,
 attachments, search conditions, bulk transactions, export, duplicates) is in
 **`references/recipes.md`**. Read it before composing write operations.
+
+## PDFs: answer questions, summarize, save notes
+
+When the user wants to ask about an item's PDF, summarize a book/chapter/section,
+or save a summary back into Zotero, read **`references/pdf-and-notes.md`**. The
+short version:
+
+- `zot pdf <ITEMKEY>` prints the PDF's local path. **Read that file directly**
+  with your PDF-reading tool (it takes page ranges — read only what you need).
+- For long documents, summarize **bottom-up** (section → chapter → whole) so each
+  step fits in context; keep page references.
+- Fold in the user's existing highlights (`pdf.getAnnotations()`) — they mark
+  what matters to them.
+- Save results as a **child note** (`new Zotero.Item('note')` → `setNote(html)`
+  → `parentID` → `saveTx()`), not as PDF annotations (writing highlights needs
+  fragile coordinate math). Notes are reversible (trash, not erase).
 
 ## Safe workflow for bulk / destructive operations
 

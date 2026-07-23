@@ -19,7 +19,7 @@ for why.
 | Path | What |
 |------|------|
 | `plugin/zotero-exec/` | The write endpoint (`POST /zotexec`), ~200 lines. |
-| `cli/zot` | Stdlib-only Python CLI: `search`, `get`, `collections`, `tags`, `exec`, `ping`, `init`. |
+| `cli/zot` | Stdlib-only Python CLI: `search`, `get`, `pdf`, `collections`, `tags`, `exec`, `ping`, `init`. |
 | `skill/` | The `zotero` skill for Claude Code (SKILL.md + recipe book + evals). |
 | `docs/` | Install, security model, architecture. |
 | `install.sh` | Wires it all up. |
@@ -56,7 +56,9 @@ export/dedup) is [`skill/references/recipes.md`](skill/references/recipes.md).
 
 `install.sh` symlinks the skill to `~/.claude/skills/zotero`. Ask Claude things
 like *"export collection SS5MVVB6 to JSON"*, *"tag every abstract-less item
-#revisar"*, or *"find duplicate titles"* — it drives `zot` and follows a safe
+#revisar"*, *"find duplicate titles"*, *"summarize the PDF of this item chapter
+by chapter and save it as a note"*, or *"what does this paper say about X?"* —
+it drives `zot` (including `zot pdf` to read the attached PDF) and follows a safe
 workflow (backup, sync-off, dry-run, test-small) for bulk or destructive edits.
 
 ## Requirements
