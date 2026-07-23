@@ -41,7 +41,28 @@ zot collections                         # key, #items, name
 zot tags                                # #items, tag
 ```
 
-Add `--json` to any read command for machine-readable output.
+Add `--json` to any read command for machine-readable output. Read commands
+that list (`search`, `collections`, `tags`) stop at `--limit` and print a
+`showing N of M` notice on stderr — pass `--all` to paginate through everything.
+
+### Common operations (prefer these over hand-written `exec`)
+
+These are thin, reliable commands built on the Zotero JS API — reach for them
+before writing ad-hoc JS, so you don't re-derive logic (or re-hit gotchas like
+the abstract-search one):
+
+```bash
+zot export <collection|name> --format json|csv|bibtex|biblatex|ris [--out f]
+zot missing abstract|date|doi|url [--collection KEY]   # items lacking a field
+zot author "Ojeda"                                      # items by an author
+zot notes <ITEMKEY>                                     # list an item's notes
+zot note  <ITEMKEY> --file note.html [--dry-run]        # add a child note
+zot lint                                                # data-quality report
+```
+
+`zot missing` uses the reliable `getField` check, not the empty-string search
+condition (which silently returns 0 — see recipes.md). Use `exec` only for
+operations these commands don't cover.
 
 ### Better BibTeX citekeys
 
@@ -92,18 +113,20 @@ short version:
   step fits in context; keep page references.
 - Fold in the user's existing highlights (`pdf.getAnnotations()`) — they mark
   what matters to them.
-- Save results as a **child note** (`new Zotero.Item('note')` → `setNote(html)`
-  → `parentID` → `saveTx()`), not as PDF annotations (writing highlights needs
-  fragile coordinate math). Notes are reversible (trash, not erase).
+- Save results with **`zot note <ITEMKEY> --file note.html`** (a child note),
+  not as PDF annotations (writing highlights needs fragile coordinate math).
+  Notes are reversible (trash, not erase); `zot notes <ITEMKEY>` lists them.
 
 ## Safe workflow for bulk / destructive operations
 
 Arbitrary JS = full power over the library. Before any batch write or deletion:
 
-1. **Back up** `zotero.sqlite` (tell the user the path from `zot exec 'return Zotero.DataDirectory.dir;'`).
+1. **Back up** with `zot backup` (snapshots `zotero.sqlite`, prints the path).
 2. **Disable auto-sync** in Zotero → Preferences → Sync (so a mistake doesn't propagate).
-3. **Dry-run first**: run a read-only version that returns the count and a few
-   sample titles of what *would* change, and show it to the user.
+3. **Dry-run first**: `zot exec script.js --dry-run` intercepts writes and reports
+   what *would* change without persisting; show it to the user. (Best-effort — a
+   script that reads back its own new writes may error; the backup is the hard
+   guarantee.) For structured commands, `zot note … --dry-run` works too.
 4. Apply to **1–2 items** and verify before running on the full set.
 5. Use `Zotero.DB.executeTransaction()` for large batches (see recipes).
 6. Deletions: prefer the trash (`item.deleted = true; saveTx()`), not

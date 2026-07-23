@@ -11,10 +11,14 @@ Stdlib only (urllib) — no dependencies, no daemon.
 """
 
 import argparse
+import csv
+import datetime
 import glob
 import json
 import os
+import re
 import secrets
+import shutil
 import sys
 import urllib.error
 import urllib.parse
@@ -63,6 +67,54 @@ def http_get(url, timeout=30):
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, resp.read().decode("utf-8")
+
+
+def http_get_full(url, timeout=30):
+    """Like http_get but also returns response headers (for pagination)."""
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.status, dict(resp.headers), resp.read().decode("utf-8")
+
+
+def api_list(cfg, path, params=None, want_all=False, limit=25):
+    """GET a JSON list endpoint, honoring the read API's pagination.
+
+    Returns (items, total). Without want_all, fetches up to `limit`; with
+    want_all, pages through in chunks of 100 until the Total-Results count is
+    reached. `total` is the server's Total-Results (int) or None.
+    """
+    params = dict(params or {})
+    collected = []
+    total = None
+    start = 0
+    while True:
+        req_limit = 100 if want_all else limit
+        params["start"] = start
+        params["limit"] = req_limit
+        _, headers, body = http_get_full(api_url(cfg, path, params))
+        if total is None and headers.get("Total-Results") is not None:
+            try:
+                total = int(headers["Total-Results"])
+            except ValueError:
+                total = None
+        chunk = json.loads(body)
+        if not isinstance(chunk, list):
+            return chunk, total
+        collected.extend(chunk)
+        if not want_all or len(chunk) < req_limit:
+            break
+        if total is not None and len(collected) >= total:
+            break
+        start += req_limit
+    return collected, total
+
+
+def truncation_notice(shown, total, want_all):
+    if not want_all and total is not None and total > shown:
+        print(
+            "... showing %d of %d — use --all to fetch everything" % (shown, total),
+            file=sys.stderr,
+        )
 
 
 def zotexec(cfg, code, timeout=120):
@@ -173,15 +225,28 @@ def cmd_ping(args):
     sys.exit(0 if ok else 1)
 
 
+def run_js(cfg, code, timeout=120):
+    """Send JS to /zotexec and return the result, or die with the error."""
+    env = zotexec(cfg, code, timeout=timeout)
+    if not env.get("ok"):
+        die(env.get("error") or "zotexec error", code=2)
+    result = env.get("result")
+    if isinstance(result, dict) and result.get("error"):
+        die(result["error"], code=3)
+    return result
+
+
 def cmd_search(args):
     cfg = require_config()
-    params = {"q": args.query, "limit": args.limit, "format": "json"}
+    params = {"q": args.query, "format": "json"}
     if args.item_type:
         params["itemType"] = args.item_type
     if args.tag:
         params["tag"] = args.tag
-    status, body = http_get(api_url(cfg, "items", params))
-    _print_items(json.loads(body), args.json)
+    items, total = api_list(cfg, "items", params, args.all, args.limit)
+    _print_items(items, args.json)
+    if not args.json:
+        truncation_notice(len(items), total, args.all)
 
 
 def cmd_get(args):
@@ -261,8 +326,7 @@ return { itemKey: it.key, title: it.getField('title'), pdfs: out };
 
 def cmd_collections(args):
     cfg = require_config()
-    status, body = http_get(api_url(cfg, "collections", {"limit": args.limit}))
-    data = json.loads(body)
+    data, total = api_list(cfg, "collections", None, args.all, args.limit)
     if args.json:
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return
@@ -270,12 +334,12 @@ def cmd_collections(args):
         d = c.get("data", {})
         meta = c.get("meta", {})
         print("%-10s %-4s %s" % (d.get("key", ""), meta.get("numItems", ""), d.get("name", "")))
+    truncation_notice(len(data), total, args.all)
 
 
 def cmd_tags(args):
     cfg = require_config()
-    status, body = http_get(api_url(cfg, "tags", {"limit": args.limit}))
-    data = json.loads(body)
+    data, total = api_list(cfg, "tags", None, args.all, args.limit)
     if args.json:
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return
@@ -283,18 +347,84 @@ def cmd_tags(args):
         d = t.get("data", t)
         meta = t.get("meta", {})
         print("%-6s %s" % (meta.get("numItems", ""), d.get("tag", "")))
+    truncation_notice(len(data), total, args.all)
+
+
+# Preamble that intercepts Zotero's write verbs so a script can be run without
+# persisting anything. Best-effort: covers the common instance/static write
+# methods; scripts that read back their own new writes may still error (that is
+# reported). For a hard guarantee, take a `zot backup` first.
+DRYRUN_PREAMBLE = r"""
+var __log = [];
+var __restore = [];
+function __wrap(obj, name, label) {
+  if (!obj || typeof obj[name] !== 'function') return;
+  var orig = obj[name];
+  __restore.push(function () { obj[name] = orig; });
+  obj[name] = function () {
+    var what = 'collection';
+    try { what = this.itemType || (this.name !== undefined ? 'collection' : 'item'); } catch (e) {}
+    var title = '';
+    try { title = (this.getField ? this.getField('title') : this.name) || this.key || ''; } catch (e) {}
+    __log.push({ op: label + '.' + name, kind: what, title: title });
+    return Promise.resolve(this.id || null);
+  };
+}
+__wrap(Zotero.Item.prototype, 'saveTx', 'Item');
+__wrap(Zotero.Item.prototype, 'save', 'Item');
+__wrap(Zotero.Item.prototype, 'eraseTx', 'Item');
+__wrap(Zotero.Item.prototype, 'erase', 'Item');
+__wrap(Zotero.Collection.prototype, 'saveTx', 'Collection');
+__wrap(Zotero.Collection.prototype, 'eraseTx', 'Collection');
+__wrap(Zotero.Items, 'trashTx', 'Items');
+__wrap(Zotero.Items, 'eraseTx', 'Items');
+var __result = null, __err = null;
+try {
+  __result = await (async function () {
+%s
+  })();
+} catch (e) {
+  __err = String(e && e.message ? e.message : e);
+} finally {
+  __restore.forEach(function (f) { f(); });
+}
+return { dryRun: true, wouldWrite: __log, result: __result, error: __err };
+"""
+
+
+def _read_source(source):
+    if source == "-":
+        return sys.stdin.read()
+    if os.path.exists(source):
+        with open(source, "r", encoding="utf-8") as fh:
+            return fh.read()
+    return source  # inline JS
 
 
 def cmd_exec(args):
     cfg = require_config()
-    if args.source == "-":
-        code = sys.stdin.read()
-    elif os.path.exists(args.source):
-        with open(args.source, "r", encoding="utf-8") as fh:
-            code = fh.read()
-    else:
-        # treat the argument itself as inline JS
-        code = args.source
+    code = _read_source(args.source)
+    if args.dry_run:
+        indented = "\n".join("    " + line for line in code.splitlines())
+        env = zotexec(cfg, DRYRUN_PREAMBLE % indented)
+        if not env.get("ok"):
+            die(env.get("error") or "unknown error from zotexec", code=2)
+        res = env.get("result") or {}
+        writes = res.get("wouldWrite") or []
+        print("DRY-RUN — no changes were persisted.")
+        if writes:
+            print("Would perform %d write(s):" % len(writes))
+            for w in writes:
+                print("  %-16s %s %s" % (w.get("op", ""), w.get("kind", ""), w.get("title", "")))
+        else:
+            print("Would perform 0 writes (nothing to persist).")
+        if res.get("error"):
+            print(
+                "\nNote: the script raised after interception (often a read-back of a\n"
+                "not-yet-saved item under dry-run): %s" % res["error"],
+                file=sys.stderr,
+            )
+        return
     env = zotexec(cfg, code)
     if env.get("ok"):
         result = env.get("result")
@@ -304,6 +434,265 @@ def cmd_exec(args):
             print(result)
     else:
         die(env.get("error") or "unknown error from zotexec", code=2)
+
+
+FIELD_ALIASES = {
+    "abstract": "abstractNote",
+    "abstractnote": "abstractNote",
+    "date": "date",
+    "doi": "DOI",
+    "url": "url",
+    "publisher": "publisher",
+    "publication": "publicationTitle",
+}
+
+# JS helper injected into export/missing/author so those commands are thin,
+# clean operations on top of the Zotero JS API (not hand-written each time).
+_JS_ITEM_MAP = r"""
+function mapItem(it) {
+  var ck = null;
+  try { var k = Zotero.BetterBibTeX && Zotero.BetterBibTeX.KeyManager.get(it.id); ck = k ? k.citationKey : null; } catch (e) {}
+  return {
+    key: it.key, citekey: ck, type: it.itemType,
+    title: it.getField('title'), date: it.getField('date'),
+    year: (String(it.getField('date') || '').match(/\d{4}/) || [null])[0],
+    creators: it.getCreators().map(function (c) {
+      return (c.firstName ? c.firstName + ' ' : '') + (c.lastName || c.name || '');
+    }),
+    venue: it.getField('publicationTitle') || it.getField('bookTitle')
+           || it.getField('publisher') || it.getField('university') || '',
+    doi: it.getField('DOI') || '', url: it.getField('url') || '',
+    tags: it.getTags().map(function (t) { return t.tag; }),
+    abstract: it.getField('abstractNote') || ''
+  };
+}
+"""
+
+
+def _resolve_collection_js(arg):
+    """JS that resolves `arg` (a collection key OR name) to a collection object
+    into the variable `col`, or returns {error}."""
+    return (
+        "var __arg = %r;\n"
+        "var col = await Zotero.Collections.getByLibraryAndKey(Zotero.Libraries.userLibraryID, __arg);\n"
+        "if (!col) { col = Zotero.Collections.getByLibrary(Zotero.Libraries.userLibraryID, true)"
+        ".find(function(c){return c.name === __arg;}); }\n"
+        "if (!col) return { error: 'collection not found (key or name): ' + __arg };\n"
+    ) % arg
+
+
+def cmd_export(args):
+    cfg = require_config()
+    fmt = args.format
+    if fmt in ("bibtex", "biblatex", "ris"):
+        # resolve to a collection key, then use the read API's native exporter
+        key = run_js(cfg, _resolve_collection_js(args.collection) + "return col.key;")
+        _, body = http_get(api_url(cfg, "collections/%s/items/top" % key, {"format": fmt, "limit": 100}))
+        _write_or_print(args.out, body)
+        return
+    # json / csv: build structured data via the JS API
+    code = _JS_ITEM_MAP + _resolve_collection_js(args.collection) + (
+        "var items = col.getChildItems().filter(function(i){return i.isRegularItem();});\n"
+        "return { collection: col.name, key: col.key, items: items.map(mapItem) };"
+    )
+    res = run_js(cfg, code)
+    items = res.get("items", [])
+    if fmt == "json":
+        _write_or_print(args.out, json.dumps(items, indent=2, ensure_ascii=False))
+    else:  # csv
+        import io
+
+        buf = io.StringIO()
+        cols = ["key", "citekey", "type", "year", "date", "title", "creators", "venue", "doi", "url", "tags"]
+        w = csv.writer(buf)
+        w.writerow(cols)
+        for it in items:
+            row = [it.get(c, "") for c in cols]
+            row[cols.index("creators")] = "; ".join(it.get("creators", []))
+            row[cols.index("tags")] = "; ".join(it.get("tags", []))
+            w.writerow(row)
+        _write_or_print(args.out, buf.getvalue())
+    if not args.out:
+        return
+    print("Wrote %d items to %s" % (len(items), args.out), file=sys.stderr)
+
+
+def _write_or_print(out, text):
+    if out:
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    else:
+        print(text)
+
+
+def cmd_missing(args):
+    cfg = require_config()
+    field = FIELD_ALIASES.get(args.field.lower(), args.field)
+    scope = ""
+    if args.collection:
+        scope = _resolve_collection_js(args.collection) + (
+            "var items = col.getChildItems().filter(function(i){return i.isRegularItem();});\n"
+        )
+    else:
+        scope = (
+            "var s = new Zotero.Search(); s.libraryID = Zotero.Libraries.userLibraryID;\n"
+            "s.addCondition('itemType','isNot','attachment'); s.addCondition('itemType','isNot','note');\n"
+            "var ids = await s.search(); var items = (await Zotero.Items.getAsync(ids))"
+            ".filter(function(i){return i.isRegularItem();});\n"
+        )
+    code = _JS_ITEM_MAP + scope + (
+        "var miss = items.filter(function(i){ return !String(i.getField(%r) || '').trim(); });\n"
+        "return { field: %r, total: items.length, missing: miss.length, items: miss.map(mapItem) };"
+    ) % (field, field)
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print("%d of %d items are missing '%s':" % (res["missing"], res["total"], res["field"]))
+    for it in res["items"]:
+        print("  %-10s %-15s %s" % (it["key"], it["type"], (it["title"] or "")[:70]))
+
+
+def cmd_author(args):
+    cfg = require_config()
+    code = _JS_ITEM_MAP + (
+        "var q = %r.toLowerCase();\n"
+        "var s = new Zotero.Search(); s.libraryID = Zotero.Libraries.userLibraryID;\n"
+        "s.addCondition('itemType','isNot','attachment'); s.addCondition('itemType','isNot','note');\n"
+        "var ids = await s.search(); var items = (await Zotero.Items.getAsync(ids))"
+        ".filter(function(i){return i.isRegularItem();});\n"
+        "var mine = items.filter(function(it){ return it.getCreators().some(function(c){\n"
+        "  return ((c.firstName||'')+' '+(c.lastName||c.name||'')).toLowerCase().indexOf(q) !== -1; }); });\n"
+        "mine.sort(function(a,b){ return String(b.getField('date')||'').localeCompare(String(a.getField('date')||'')); });\n"
+        "return { query: %r, count: mine.length, items: mine.map(mapItem) };"
+    ) % (args.name, args.name)
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print("%d items with author matching '%s':" % (res["count"], res["query"]))
+    for it in res["items"]:
+        ck = (" ·" + it["citekey"]) if it.get("citekey") else ""
+        print("  [%s] %-14s %s%s" % (it.get("year") or "????", it["type"], (it["title"] or "")[:64], ck))
+
+
+def cmd_notes(args):
+    cfg = require_config()
+    key = resolve_key(cfg, args.key)
+    code = (
+        "var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);\n"
+        "if (!it) return { error: 'item not found: ' + %r };\n"
+        "var notes = it.getNotes().map(function(id){ var n = Zotero.Items.get(id);\n"
+        "  var text = n.getNote().replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();\n"
+        "  return { key: n.key, preview: text.slice(0,100) }; });\n"
+        "return { itemKey: it.key, title: it.getField('title'), notes: notes };"
+    ) % (key, key)
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print("%s — %d note(s)" % (res["title"] or res["itemKey"], len(res["notes"])))
+    for n in res["notes"]:
+        print("  %-10s %s" % (n["key"], n["preview"]))
+
+
+def cmd_note(args):
+    cfg = require_config()
+    key = resolve_key(cfg, args.key)
+    if args.file:
+        with open(args.file, "r", encoding="utf-8") as fh:
+            html = fh.read()
+    elif args.text is not None:
+        html = args.text
+    else:
+        html = sys.stdin.read()
+    # If it doesn't look like HTML, wrap plain text into paragraphs.
+    if "<" not in html:
+        html = "".join("<p>%s</p>" % line for line in html.splitlines() if line.strip())
+    if args.dry_run:
+        preview = re.sub(r"<[^>]+>", " ", html)
+        preview = re.sub(r"\s+", " ", preview).strip()
+        print("DRY-RUN — would add a child note to %s:" % key)
+        print("  %s" % preview[:200])
+        return
+    code = (
+        "var parent = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);\n"
+        "if (!parent) return { error: 'item not found: ' + %r };\n"
+        "var note = new Zotero.Item('note'); note.setNote(%s); note.parentID = parent.id;\n"
+        "var id = await note.saveTx();\n"
+        "return { noteKey: Zotero.Items.get(id).key, parent: parent.key };"
+    ) % (key, key, json.dumps(html))
+    res = run_js(cfg, code)
+    print("Added note %s to item %s" % (res["noteKey"], res["parent"]))
+
+
+def cmd_backup(args):
+    cfg = require_config()
+    data_dir = run_js(cfg, "return Zotero.DataDirectory.dir;")
+    src = os.path.join(data_dir, "zotero.sqlite")
+    if not os.path.exists(src):
+        die("zotero.sqlite not found at %s" % src)
+    dest_dir = args.dir or os.path.join(CONFIG_DIR, "backups")
+    os.makedirs(dest_dir, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    copied = []
+    for suffix in ("", "-wal", "-shm"):
+        s = src + suffix
+        if os.path.exists(s):
+            d = os.path.join(dest_dir, "zotero-%s.sqlite%s" % (ts, suffix))
+            shutil.copy2(s, d)
+            copied.append(d)
+    main_copy = copied[0]
+    size_mb = os.path.getsize(main_copy) / (1024 * 1024)
+    print("Backed up to: %s (%.0f MB)" % (main_copy, size_mb))
+    for extra in copied[1:]:
+        print("  + %s" % os.path.basename(extra))
+
+
+def cmd_lint(args):
+    cfg = require_config()
+    code = (
+        "var s = new Zotero.Search(); s.libraryID = Zotero.Libraries.userLibraryID;\n"
+        "s.addCondition('itemType','isNot','attachment'); s.addCondition('itemType','isNot','note');\n"
+        "var ids = await s.search(); var items = (await Zotero.Items.getAsync(ids))"
+        ".filter(function(i){return i.isRegularItem();});\n"
+        "var out = { total: items.length, combinedCreators: [], noDate: [], noCreators: [], duplicateTitles: [] };\n"
+        "var seen = {};\n"
+        "for (var it of items) {\n"
+        "  var cr = it.getCreators();\n"
+        "  if (cr.length === 0) out.noCreators.push({ key: it.key, title: it.getField('title') });\n"
+        "  for (var c of cr) {\n"
+        "    var combined = c.fieldMode === 1 && /,| y | & |;| and /i.test(c.lastName || '');\n"
+        "    if (combined) { out.combinedCreators.push({ key: it.key, title: it.getField('title'), field: c.lastName }); break; }\n"
+        "  }\n"
+        "  if (!String(it.getField('date') || '').trim()) out.noDate.push({ key: it.key, title: it.getField('title') });\n"
+        "  var t = String(it.getField('title') || '').toLowerCase().trim();\n"
+        "  if (t) { if (seen[t]) out.duplicateTitles.push({ key: it.key, title: it.getField('title'), first: seen[t] }); else seen[t] = it.key; }\n"
+        "}\n"
+        "return out;"
+    )
+    res = run_js(cfg, code)
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    n = args.samples
+
+    def section(label, rows, fmt):
+        print("\n%s: %d" % (label, len(rows)))
+        for r in rows[:n]:
+            print("  " + fmt(r))
+        if len(rows) > n:
+            print("  ... (%d more)" % (len(rows) - n))
+
+    print("Scanned %d regular items." % res["total"])
+    section("Authors stored in a single combined field", res["combinedCreators"],
+            lambda r: "%-10s %-40s | %s" % (r["key"], (r["title"] or "")[:40], r["field"]))
+    section("Possible duplicate titles", res["duplicateTitles"],
+            lambda r: "%-10s (dup of %s) %s" % (r["key"], r["first"], (r["title"] or "")[:50]))
+    section("Items with no date", res["noDate"],
+            lambda r: "%-10s %s" % (r["key"], (r["title"] or "")[:60]))
+    section("Items with no creators", res["noCreators"],
+            lambda r: "%-10s %s" % (r["key"], (r["title"] or "")[:60]))
 
 
 def cmd_init(args):
@@ -386,6 +775,7 @@ def build_parser():
     sp = sub.add_parser("search", help="full-text search items (read API)")
     sp.add_argument("query")
     sp.add_argument("--limit", type=int, default=25)
+    sp.add_argument("--all", action="store_true", help="fetch all results (paginate)")
     sp.add_argument("--item-type", dest="item_type")
     sp.add_argument("--tag")
     sp.add_argument("--json", action="store_true")
@@ -407,20 +797,62 @@ def build_parser():
     sp.set_defaults(func=cmd_pdf)
 
     sp = sub.add_parser("collections", help="list collections (read API)")
-    sp.add_argument("--limit", type=int, default=200)
+    sp.add_argument("--limit", type=int, default=100)
+    sp.add_argument("--all", action="store_true", help="fetch all (paginate)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_collections)
 
     sp = sub.add_parser("tags", help="list tags (read API)")
-    sp.add_argument("--limit", type=int, default=200)
+    sp.add_argument("--limit", type=int, default=100)
+    sp.add_argument("--all", action="store_true", help="fetch all (paginate)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_tags)
+
+    sp = sub.add_parser("export", help="export a collection's items (by key or name)")
+    sp.add_argument("collection", help="collection key or name")
+    sp.add_argument("--format", choices=["json", "csv", "bibtex", "biblatex", "ris"], default="json")
+    sp.add_argument("--out", help="write to file instead of stdout")
+    sp.set_defaults(func=cmd_export)
+
+    sp = sub.add_parser("missing", help="list items missing a field (abstract/date/doi/url/...)")
+    sp.add_argument("field", help="field name or alias: abstract, date, doi, url, publisher, publication")
+    sp.add_argument("--collection", help="limit to a collection (key or name)")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_missing)
+
+    sp = sub.add_parser("author", help="list items whose author matches a name")
+    sp.add_argument("name")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_author)
+
+    sp = sub.add_parser("notes", help="list an item's child notes (by key or citekey)")
+    sp.add_argument("key")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_notes)
+
+    sp = sub.add_parser("note", help="add a child note to an item (by key or citekey)")
+    sp.add_argument("key")
+    sp.add_argument("--file", help="read note body (HTML or text) from a file")
+    sp.add_argument("--text", help="note body as a string")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="show what would be added, don't write")
+    sp.set_defaults(func=cmd_note)
+
+    sp = sub.add_parser("backup", help="snapshot zotero.sqlite to a timestamped file")
+    sp.add_argument("--dir", help="destination dir (default: ~/.config/zotero-exec/backups)")
+    sp.set_defaults(func=cmd_backup)
+
+    sp = sub.add_parser("lint", help="report data-quality issues in the library")
+    sp.add_argument("--samples", type=int, default=10, help="examples to show per issue")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_lint)
 
     sp = sub.add_parser(
         "exec",
         help="run JS via /zotexec. SOURCE is a file, '-' for stdin, or inline JS.",
     )
     sp.add_argument("source")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="intercept writes and report what would change (best-effort)")
     sp.set_defaults(func=cmd_exec)
 
     return p

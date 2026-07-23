@@ -36,8 +36,11 @@ body in-process and returns the result as JSON. This mirrors the well-known
   Token-protected, origin-guarded, loopback-only. Fully general — every recipe
   in the memory/reference book works over it unchanged.
 - **Layer 1 — `zot` CLI** (`cli/zot`): stdlib-only Python. `search`, `get`,
-  `collections`, `tags` hit the fast read API; `exec` is the write workhorse;
-  `ping` validates the stack; `init` is the config wizard.
+  `cite`, `pdf`, `collections`, `tags` hit the fast read API (with `--all`
+  pagination); `export`, `missing`, `author`, `notes`, `note`, `lint` are
+  common operations built cleanly on the Zotero JS API; `exec` is the raw write
+  escape hatch (with `--dry-run`); `backup` snapshots the DB; `ping` validates
+  the stack; `init` is the config wizard.
 - **Layer 2 — `zotero` skill** (`skill/`): teaches an agent to drive `zot`,
   including the safe workflow for bulk/destructive operations.
 

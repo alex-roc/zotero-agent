@@ -109,9 +109,19 @@ return anns.map(a => ({
 <a id="5-save-as-note"></a>
 ## 5. Save the result as a note
 
-Store the summary as a **child note** on the item. Notes are HTML; use headings
-and lists so it renders well in Zotero's note pane. Keep a marker line at the
-top so it's clear the note was AI-generated and can be found/removed later.
+Store the summary as a **child note** on the item. The easy path is the CLI —
+write the HTML to a file and add it (works with a key or citekey):
+
+```bash
+zot note <ITEMKEY|@citekey> --file summary.html   # add a child note
+zot note <ITEMKEY> --file summary.html --dry-run   # preview, don't write
+zot notes <ITEMKEY>                                 # list existing notes
+```
+
+Notes are HTML; use headings and lists so they render well in Zotero's note
+pane. Keep a marker line at the top so it's clear the note was AI-generated and
+can be found/removed later. The equivalent via `zot exec` if you need more
+control:
 
 ```javascript
 var parent = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, 'ITEMKEY');
