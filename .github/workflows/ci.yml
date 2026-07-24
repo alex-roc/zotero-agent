@@ -7,10 +7,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # 3.9 and 3.13 bracket the supported range (requires-python = ">=3.9");
+    # both OSes matter because the tool targets the Zotero desktop app.
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.9", "3.13"]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,7 +29,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
         with:
-          args: check src tests cli/zot
+          args: check src tests cli/zot scripts
+
+  reference-drift:
+    # The command reference is generated from the argparse tree; fail if a
+    # help-text change landed without regenerating docs/ + the website page.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Regenerate the reference
+        run: python scripts/gen_cli_reference.py
+      - name: Fail if it drifted from the committed copies
+        run: |
+          git diff --exit-code -- docs/commands.md web/src/content/docs/reference/commands.md \
+            || { echo "::error::Reference is stale — run 'python scripts/gen_cli_reference.py' and commit."; exit 1; }
 
   build-xpi:
     runs-on: ubuntu-latest
@@ -55,3 +75,24 @@ jobs:
         with:
           name: dist
           path: dist/*.whl
+
+  build-site:
+    # Catch a web-breaking change on the PR, before it reaches the Pages deploy.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build with Astro
+        run: pnpm build
