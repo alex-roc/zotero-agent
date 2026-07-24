@@ -4,11 +4,13 @@ in-process Zotero server for the HTTP paths. Run from the repo root:
     python -m unittest discover -s tests
 """
 import io
+import json
 import os
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
@@ -16,8 +18,8 @@ os.environ["ZOTERO_AGENT_NO_AUDIT"] = "1"  # don't touch ~/.local/state during t
 
 from fake_zotero import FakeZotero  # noqa: E402
 
-from zotero_agent import cli, http, jslib, resolve  # noqa: E402
-from zotero_agent.commands import features, read  # noqa: E402
+from zotero_agent import audit, cli, http, jslib, resolve  # noqa: E402
+from zotero_agent.commands import features, read, write  # noqa: E402
 from zotero_agent.term import ZotError, set_verbosity  # noqa: E402
 
 set_verbosity(quiet=True)
@@ -175,6 +177,165 @@ class TestIntegration(unittest.TestCase):
                 read.cmd_missing(_args(field="doi", base=srv.base, token="t", collection=None))
             self.assertIn("No DOI", buf.getvalue())
             self.assertIn("var miss", srv.last_code)
+
+
+class TestDryRunNeverWrites(unittest.TestCase):
+    """Regression guard for the Zotero-7 dry-run write leak: a dry-run must post
+    NO code to the bridge, so it can never persist a change."""
+
+    def test_apply_dry_run_posts_no_code(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as fh:
+            fh.write('{"key":"ABCD1234","set":{"date":"2021"},"addTags":["review"]}\n')
+            path = fh.name
+        try:
+            with FakeZotero(token="t") as srv:
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    features.cmd_apply(_args(file=path, dry_run=True, base=srv.base,
+                                             token="t", user_id=1, json=False))
+                self.assertIsNone(srv.last_code)  # nothing was executed
+                self.assertIn("DRY-RUN", buf.getvalue())
+                self.assertIn("ABCD1234", buf.getvalue())
+        finally:
+            os.unlink(path)
+
+    def test_apply_edits_data_dry_run_posts_no_code(self):
+        with FakeZotero(token="t") as srv:
+            with mock.patch("zotero_agent.config.require_config",
+                            return_value={"base": srv.base, "token": "t", "userID": 1}):
+                res = features.apply_edits_data(
+                    [{"key": "ABCD1234", "set": {"date": "2021"}}], dry_run=True)
+            self.assertIsNone(srv.last_code)
+            self.assertTrue(res.get("dryRun"))
+            self.assertEqual(res["edits"], 1)
+
+    def test_enrich_dry_run_scans_but_never_applies(self):
+        scan = {"field": "DOI", "total": 1, "missing": 1,
+                "items": [{"key": "ABCD1234", "title": "A paper", "type": "article"}]}
+        with FakeZotero(token="t", bridge_results={"var miss": scan}) as srv:
+            with mock.patch.object(features, "_crossref_lookup",
+                                   return_value={"DOI": "10.1/x"}):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    features.cmd_enrich(_args(field="doi", source="crossref", collection=None,
+                                              dry_run=True, delay=0, base=srv.base,
+                                              token="t", user_id=1))
+        # exactly one bridge call — the scan — and never the apply body
+        self.assertEqual(len(srv.last_codes), 1)
+        self.assertIn("var miss", srv.last_codes[0])
+        self.assertNotIn("var edits=", srv.last_codes[0])
+        self.assertIn("DRY-RUN", buf.getvalue())
+
+
+class TestApplyUndoRoundtrip(unittest.TestCase):
+    def test_apply_snapshots_then_undo_restores(self):
+        tmp = tempfile.mkdtemp()
+        snap_item = {"key": "ABCD1234", "itemType": "book", "title": "T", "tags": []}
+        bridge = {
+            "toJSON": lambda code: {"ABCD1234": snap_item},   # snapshot
+            "var edits=": {"applied": 1, "errors": []},        # apply
+            "fromJSON": {"restored": 1, "errors": []},          # undo
+        }
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as fh:
+            fh.write('{"key":"ABCD1234","set":{"date":"2021"}}\n')
+            path = fh.name
+        try:
+            with mock.patch.object(features, "UNDO_DIR", tmp), \
+                 FakeZotero(token="t", bridge_results=bridge) as srv:
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    features.cmd_apply(_args(file=path, dry_run=False, base=srv.base,
+                                             token="t", user_id=1, json=False))
+                self.assertIn("Applied 1 edit", buf.getvalue())
+                # a snapshot was written, and it came before the apply
+                snaps = [f for f in os.listdir(tmp) if f.endswith(".json")]
+                self.assertEqual(len(snaps), 1)
+                self.assertLess(srv.last_codes.index([c for c in srv.last_codes if "toJSON" in c][0]),
+                                srv.last_codes.index([c for c in srv.last_codes if "var edits=" in c][0]))
+
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    features.cmd_undo(_args(op="last", keep=False, base=srv.base,
+                                            token="t", user_id=1))
+                self.assertIn("Restored 1 item", buf.getvalue())
+                # snapshot consumed
+                self.assertEqual([f for f in os.listdir(tmp) if f.endswith(".json")], [])
+        finally:
+            os.unlink(path)
+
+
+class TestWriteCommandsPostExpectedJs(unittest.TestCase):
+    def _cfg(self, srv):
+        return dict(base=srv.base, token="t", user_id=1, yes=True, json=False)
+
+    def test_set_injects_field_and_value(self):
+        with FakeZotero(token="t", bridge_results={
+                "it.setField(field, value)": {"field": "title", "items": 1, "errors": []}}) as srv:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                write.cmd_set(_args(field="title", value="New Title", keys=["ABCD1234"],
+                                    **self._cfg(srv)))
+            self.assertIn("Set title on 1 item", buf.getvalue())
+            self.assertIn("'New Title'", srv.last_code)
+
+    def test_tag_add_injects_tag(self):
+        with FakeZotero(token="t", bridge_results={
+                "it.addTag(tag)": {"action": "add", "tag": "review", "items": 1}}) as srv:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                write.cmd_tag(_args(action="add", tag="review", keys=["ABCD1234"],
+                                    **self._cfg(srv)))
+            self.assertIn("Added tag 'review' on 1 item", buf.getvalue())
+            self.assertIn("'review'", srv.last_code)
+
+    def test_move_injects_collection(self):
+        with FakeZotero(token="t", bridge_results={
+                "addToCollection": {"collection": "My Col", "key": "COLL0001", "moved": 1}}) as srv:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                write.cmd_move(_args(collection="My Col", keys=["ABCD1234"], **self._cfg(srv)))
+            self.assertIn("Added 1 item(s) to 'My Col'", buf.getvalue())
+            self.assertIn("'My Col'", srv.last_code)
+
+
+class TestMcpRunWrapper(unittest.TestCase):
+    def test_run_parses_json_output(self):
+        from zotero_agent.mcp_server import _run
+        page = [{"data": {"key": "AAAA1111", "itemType": "book", "title": "Deep Work"}}]
+        with FakeZotero(token="t", lists={"items": page}, totals={"items": 1}) as srv:
+            result = _run(read.cmd_search, query="work", base=srv.base, token="t", user_id=1)
+        self.assertIn("Deep Work", json.dumps(result))
+
+    def test_run_maps_zoterror_to_error_dict(self):
+        from zotero_agent.mcp_server import _run
+
+        def boom(args):
+            raise ZotError("boom")
+
+        self.assertEqual(_run(boom), {"error": "boom"})
+
+
+class TestAuditLog(unittest.TestCase):
+    def test_record_writes_jsonl_and_rotates(self):
+        tmp = tempfile.mkdtemp()
+        apath = os.path.join(tmp, "audit.jsonl")
+        with mock.patch.object(audit, "STATE_DIR", tmp), \
+             mock.patch.object(audit, "AUDIT_PATH", apath), \
+             mock.patch.dict(os.environ, {"ZOTERO_AGENT_NO_AUDIT": "0"}):
+            audit.record("apply", "await item.saveTx();", {"ok": True, "result": {"applied": 1}})
+            with open(apath, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+            self.assertEqual(len(lines), 1)
+            entry = json.loads(lines[0])
+            self.assertEqual(entry["label"], "apply")
+            self.assertTrue(entry["ok"])
+            self.assertEqual(len(entry["codeSHA256"]), 16)
+
+            # a second call with a tiny rotation threshold moves the old log aside
+            with mock.patch.object(audit, "MAX_BYTES", 1):
+                audit.record("undo", "it.fromJSON({});", {"ok": True, "result": {"restored": 1}})
+            self.assertTrue(os.path.exists(apath))
+            self.assertTrue(os.path.exists(apath + ".1"))
 
 
 if __name__ == "__main__":

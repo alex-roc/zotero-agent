@@ -55,10 +55,13 @@ class _Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length) or b"{}")
         code = body.get("code", "")
         self.server.last_code = code
+        self.server.last_codes.append(code)
         result = 2  # default: the 1+1 liveness probe
         for needle, value in cfg.get("bridge_results", {}).items():
             if needle in code:
-                result = value
+                # A value may be a callable (code) -> result so different
+                # snapshot/apply/undo calls can return different things.
+                result = value(code) if callable(value) else value
                 break
         return self._send(200, json.dumps({"ok": True, "result": result}))
 
@@ -80,6 +83,7 @@ class FakeZotero:
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
         self.httpd.cfg = self.cfg
         self.httpd.last_code = None
+        self.httpd.last_codes = []
         self.port = self.httpd.server_address[1]
         self.base = "http://127.0.0.1:%d" % self.port
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -89,6 +93,10 @@ class FakeZotero:
     @property
     def last_code(self):
         return self.httpd.last_code
+
+    @property
+    def last_codes(self):
+        return self.httpd.last_codes
 
     def __exit__(self, *exc):
         self.httpd.shutdown()
