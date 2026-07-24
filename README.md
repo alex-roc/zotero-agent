@@ -26,10 +26,25 @@ Code skill**, and portable **`AGENTS.md`** instructions.
 > finally does the [bulk metadata editing people have asked Zotero for since 2016](https://forums.zotero.org/discussion/111815/feature-batch-editing-metadata-for-multiple-items).
 > See the honest [comparison](https://alex-roc.github.io/zotero-agent/compare/).
 
-```
-you / agent → [ MCP server │ Claude skill │ AGENTS.md │ zot CLI ]
-                     │ read  → Zotero local API  GET /api/…          (fast)
-                     └ write → bridge plugin      POST /zotero-agent  (privileged JS, token-gated)
+```mermaid
+flowchart LR
+    U(["👤 you / AI agent"])
+    subgraph SURF ["zotero-agent (one package)"]
+        direction TB
+        MCP["MCP server (zot mcp)"]
+        SKILL["Claude Code skill"]
+        AGENTS["AGENTS.md"]
+        CLI["zot CLI"]
+    end
+    READ["Zotero local API<br/>GET /api/… — fast, read-only"]
+    WRITE["bridge plugin<br/>POST /zotero-agent<br/>privileged JS · token-gated"]
+    LIB[("your local<br/>Zotero library")]
+
+    U --> SURF
+    SURF -->|read| READ
+    SURF -->|write| WRITE
+    READ --> LIB
+    WRITE --> LIB
 ```
 
 ## Works with your agent

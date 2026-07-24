@@ -1,8 +1,23 @@
 # Architecture
 
-```
-Agent / user → [ MCP server | agent skill | zot CLI ] ─┬─ read  → local HTTP API /api/…  (GET, fast)
-                                                        └─ write → POST /zotero-agent  (bridge plugin, arbitrary JS)
+```mermaid
+flowchart LR
+    U(["agent / user"])
+    subgraph SURF ["zotero-agent"]
+        direction TB
+        MCP["MCP server"]
+        SKILL["agent skill"]
+        CLI["zot CLI"]
+    end
+    READ["local HTTP API<br/>GET /api/… — fast, read-only"]
+    WRITE["bridge plugin<br/>POST /zotero-agent — arbitrary JS"]
+    LIB[("Zotero library")]
+
+    U --> SURF
+    SURF -->|read| READ
+    SURF -->|write| WRITE
+    READ --> LIB
+    WRITE --> LIB
 ```
 
 Three layers, each doing the one thing it is good at.
