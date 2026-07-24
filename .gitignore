@@ -22,5 +22,9 @@ __pycache__/
 # Release scratch
 /release-assets/
 
+# Local-only: not committed, not on GitHub
+/dev-docs/
+/marketing/
+
 # skill-creator eval workspace (artefactos + backup)
 /zotero-workspace/

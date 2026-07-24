@@ -73,6 +73,30 @@ Add to `~/.gemini/settings.json`:
 }
 ```
 
+## OpenCode / Windsurf
+
+Add a local (stdio) MCP server. In OpenCode's config (`opencode.json` /
+`~/.config/opencode/config.json`):
+
+```json
+{
+  "mcp": {
+    "zotero-agent": { "type": "local", "command": ["zot", "mcp"], "enabled": true }
+  }
+}
+```
+
+Windsurf and other MCP-capable editors use the same `command: "zot", args:
+["mcp"]` shape in their MCP settings.
+
+## Local models / custom agents (no MCP)
+
+Any agent that can run a shell command can drive your library through the `zot`
+CLI directly — no MCP required. Point it at [`AGENTS.md`](../AGENTS.md) (repo
+root): it lists the read/write/batch commands and the safety rules, using
+`--json` for machine-readable output and `zot apply`/`zot undo` for undoable
+batch edits. This is the path for local-model runners and bespoke agent loops.
+
 ## Any other MCP client
 
 Launch `zot mcp` over stdio with `command: "zot", args: ["mcp"]`. If `zot` is not
