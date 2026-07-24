@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#161b22"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1280" height="10" fill="#0a7ea4"/>
+
+  <!-- wordmark + tagline -->
+  <text x="80" y="150" font-size="76" font-weight="800" fill="#e6edf3">zotero<tspan fill="#39d0d8">-</tspan>agent</text>
+  <text x="82" y="212" font-size="33" font-weight="600" fill="#adbac7">Full local control of your Zotero library —</text>
+  <text x="82" y="256" font-size="33" font-weight="600" fill="#adbac7">from your terminal or your AI agent.</text>
+  <text x="82" y="304" font-size="25" fill="#768390">No cloud · no account · no API key · your library never leaves your machine.</text>
+
+  <!-- terminal card -->
+  <g>
+    <rect x="80" y="352" width="1120" height="212" rx="14" fill="#010409" stroke="#30363d" stroke-width="1.5"/>
+    <circle cx="112" cy="384" r="7" fill="#ff5f56"/>
+    <circle cx="136" cy="384" r="7" fill="#ffbd2e"/>
+    <circle cx="160" cy="384" r="7" fill="#27c93f"/>
+    <g font-family="Menlo, Consolas, monospace" font-size="25">
+      <text x="112" y="442" fill="#7ee787">$ <tspan fill="#e6edf3">zot search "bolivia" --limit 10</tspan></text>
+      <text x="112" y="482" fill="#7ee787">$ <tspan fill="#e6edf3">zot enrich --field doi --dry-run</tspan></text>
+      <text x="112" y="522" fill="#7ee787">$ <tspan fill="#e6edf3">zot apply edits.jsonl</tspan>  <tspan fill="#768390"># undoable batch edit</tspan></text>
+    </g>
+  </g>
+
+  <!-- footer badges -->
+  <text x="80" y="608" font-size="24" font-weight="600" fill="#768390">CLI  ·  MCP server  ·  agent skill  ·  local read-write  ·  MIT</text>
+</svg>

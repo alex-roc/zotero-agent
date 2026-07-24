@@ -19,6 +19,10 @@ enrich missing fields, and summarize PDFs into notes — scriptable from the she
 or drivable by an AI agent. It ships as a **CLI**, an **MCP server**, a **Claude
 Code skill**, and portable **`AGENTS.md`** instructions.
 
+<p align="center">
+  <img src="web/public/demo.gif" alt="zotero-agent driving a real 2,865-item Zotero library from the shell" width="820">
+</p>
+
 > **Why it's different.** Zotero's local HTTP API is *read-only*, so the popular
 > tools (zotero-mcp, pyzotero) can only write through the zotero.org **web** API —
 > which needs an account, an API key, and sync. zotero-agent writes **locally**
@@ -109,7 +113,7 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
 | **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` |
 | **Batch (undoable)** | `apply` `undo` `enrich` |
-| **Setup / escape** | `ping` `init` `backup` `sync` `exec` `mcp` |
+| **Setup / escape** | `ping` `init` `backup` `sync` `exec` `mcp` `completion` |
 
 ### Batch edits are undoable
 

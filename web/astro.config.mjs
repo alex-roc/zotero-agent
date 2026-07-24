@@ -13,6 +13,14 @@ export default defineConfig({
         'Full local control of your Zotero library — from your terminal or your AI agent. No cloud, no API key.',
       tagline:
         'Full local control of your Zotero library — from your terminal or your AI agent. No cloud, no API key.',
+      // Social share card (og:image / Twitter). Absolute URL so scrapers resolve it.
+      head: [
+        { tag: 'meta', attrs: { property: 'og:image', content: 'https://alex-roc.github.io/zotero-agent/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1280' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '640' } },
+        { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://alex-roc.github.io/zotero-agent/og.png' } },
+      ],
       social: [
         {
           icon: 'github',
