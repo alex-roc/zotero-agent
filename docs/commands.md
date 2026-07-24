@@ -1,6 +1,6 @@
 # Command reference
 
-_Auto-generated from the `zot` CLI (v0.2.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.2.1) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 
@@ -428,3 +428,15 @@ zot mcp [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 | Argument | Description |
 |----------|-------------|
 | `--allow-exec` | expose the run_javascript tool (arbitrary JS) |
+
+### `zot completion`
+
+```
+zot completion [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID]
+                      [-q] [--debug] [-y] [--json]
+                      {bash,zsh,fish}
+```
+
+| Argument | Description |
+|----------|-------------|
+| `shell` |  |

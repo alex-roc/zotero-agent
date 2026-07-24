@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-24
+
+### Added
+- **`zot completion <bash|zsh|fish>`** — prints a shell completion script for the
+  subcommands and global flags (no extra dependency).
+
+### Changed
+- The command reference is now generated for **both** `docs/commands.md` and the
+  website page from the one argparse source; CI fails if either drifts.
+
 ### Fixed
 - **`apply`/`update_items` dry-run no longer executes any JS**, so it can never
   persist changes (the old monkey-patch-`save()` interception could leak writes
@@ -55,6 +65,7 @@ Single-user project, no back-compat shim: reinstall the bridge XPI and run
 - Initial release as `zotero-cli-skill`: `zotexec` plugin + `zot` CLI + Claude
   Code skill.
 
-[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/alex-roc/zotero-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/alex-roc/zotero-agent/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alex-roc/zotero-agent/releases/tag/v0.1.0
