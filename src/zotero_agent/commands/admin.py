@@ -131,13 +131,31 @@ def cmd_sync(args):
         die("could not sync: %s (is a Zotero sync account configured?)" % res.get("error"), code=EXIT_GENERIC)
 
 
+def _import_legacy_config():
+    """One-time convenience: if the pre-rename config exists, reuse its token/
+    userID so upgraders keep working after just reinstalling the XPI."""
+    legacy = os.path.expanduser("~/.config/zotero-exec/config.json")
+    if not os.path.exists(legacy):
+        return None
+    try:
+        with open(legacy, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def cmd_init(args):
     from ..config import detect_profile, load_config, save_config
     cfg = load_config()
 
     if not cfg.get("token"):
-        cfg["token"] = secrets.token_urlsafe(24)
-        print("Generated a new token.")
+        legacy = _import_legacy_config()
+        if legacy and legacy.get("token"):
+            cfg.update({k: legacy[k] for k in ("token", "userID", "base") if legacy.get(k)})
+            print("Imported token/userID from the previous zotero-exec config.")
+        else:
+            cfg["token"] = secrets.token_urlsafe(24)
+            print("Generated a new token.")
     cfg.setdefault("base", DEFAULT_BASE)
 
     profile = detect_profile()
