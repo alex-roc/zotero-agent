@@ -1,10 +1,10 @@
 # Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     U(["agent / user"])
     subgraph SURF ["zotero-agent"]
-        direction TB
+        direction LR
         MCP["MCP server"]
         SKILL["agent skill"]
         CLI["zot CLI"]

@@ -27,13 +27,12 @@ Code skill**, and portable **`AGENTS.md`** instructions.
 > See the honest [comparison](https://alex-roc.github.io/zotero-agent/compare/).
 
 ```mermaid
-flowchart LR
+flowchart TD
     U(["👤 you / AI agent"])
     subgraph SURF ["zotero-agent (one package)"]
-        direction TB
+        direction LR
         MCP["MCP server (zot mcp)"]
-        SKILL["Claude Code skill"]
-        AGENTS["AGENTS.md"]
+        SKILL["agent skill"]
         CLI["zot CLI"]
     end
     READ["Zotero local API<br/>GET /api/… — fast, read-only"]
