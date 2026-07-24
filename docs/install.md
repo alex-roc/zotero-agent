@@ -69,6 +69,21 @@ zot ping
 If the endpoint is FAIL, the plugin is not loaded — reinstall `dist/zotero-agent-bridge.xpi`
 via *Tools → Plugins → gear → Install Plugin From File…* and check it is enabled.
 
+## Shell completion (optional)
+
+`zot completion <shell>` prints a completion script for `bash`, `zsh`, or `fish`:
+
+```bash
+# bash — in ~/.bashrc:
+eval "$(zot completion bash)"
+# zsh — in ~/.zshrc:
+eval "$(zot completion zsh)"
+# fish:
+zot completion fish > ~/.config/fish/completions/zot.fish
+```
+
+It completes subcommand names and the global flags; no extra dependency.
+
 ## Uninstall
 
 Remove "Zotero Agent Bridge" from *Tools → Plugins*, then remove

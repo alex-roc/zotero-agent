@@ -176,6 +176,9 @@ def build_parser():
     sp.add_argument("--allow-exec", action="store_true",
                     help="expose the run_javascript tool (arbitrary JS)")
 
+    sp = add("completion", admin.cmd_completion, "print a shell completion script (bash/zsh/fish)")
+    sp.add_argument("shell", choices=["bash", "zsh", "fish"])
+
     return p
 
 

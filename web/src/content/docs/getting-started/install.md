@@ -83,6 +83,17 @@ needs no Zotero restart** — just edit the file. If you prefer a Zotero pref, s
 [Configuration](/zotero-agent/reference/configuration/) and the
 [security model](/zotero-agent/security/).
 
+## Shell completion (optional)
+
+`zot completion <shell>` prints a completion script for `bash`, `zsh`, or `fish`
+— it completes subcommand names and global flags, with no extra dependency:
+
+```bash
+eval "$(zot completion bash)"   # in ~/.bashrc
+eval "$(zot completion zsh)"    # in ~/.zshrc
+zot completion fish > ~/.config/fish/completions/zot.fish
+```
+
 ## OS paths
 
 `zot init` detects your Zotero profile automatically; these are only for manual

@@ -182,3 +182,65 @@ def cmd_init(args):
         print("  %s" % (env.get("error") or env))
         print("\nInstall the plugin and restart Zotero (see docs/install.md),")
         print("then re-run `zot init` to auto-detect your userID.")
+
+
+# --------------------------------------------------------------------------- #
+# shell completion
+# --------------------------------------------------------------------------- #
+_GLOBAL_FLAGS = "--json --quiet -q --yes -y --debug --base --token --user-id --help -h --version"
+
+
+def _command_names():
+    """Subcommand names, taken straight from the parser so they never drift."""
+    from ..cli import build_parser
+    parser = build_parser()
+    for action in parser._actions:
+        if action.__class__.__name__ == "_SubParsersAction":
+            return list(action.choices)
+    return []
+
+
+def cmd_completion(args):
+    """Emit a shell completion script for `zot` (bash | zsh | fish)."""
+    cmds = " ".join(_command_names())
+    shell = args.shell
+    if shell == "bash":
+        print(
+            "# zot bash completion — add to ~/.bashrc:  eval \"$(zot completion bash)\"\n"
+            "_zot_completion() {\n"
+            '  local cur="${COMP_WORDS[COMP_CWORD]}"\n'
+            '  if [ "$COMP_CWORD" -eq 1 ]; then\n'
+            '    COMPREPLY=( $(compgen -W "%s" -- "$cur") )\n'
+            '  elif [[ "$cur" == -* ]]; then\n'
+            '    COMPREPLY=( $(compgen -W "%s" -- "$cur") )\n'
+            "  else\n"
+            '    COMPREPLY=( $(compgen -f -- "$cur") )\n'
+            "  fi\n"
+            "}\n"
+            "complete -F _zot_completion zot" % (cmds, _GLOBAL_FLAGS)
+        )
+    elif shell == "zsh":
+        print(
+            "# zot zsh completion — add to ~/.zshrc:  eval \"$(zot completion zsh)\"\n"
+            "_zot() {\n"
+            "  local -a cmds\n"
+            "  cmds=(%s)\n"
+            "  if (( CURRENT == 2 )); then\n"
+            "    compadd -- $cmds\n"
+            '  elif [[ "${words[CURRENT]}" == -* ]]; then\n'
+            "    compadd -- %s\n"
+            "  else\n"
+            "    _files\n"
+            "  fi\n"
+            "}\n"
+            "compdef _zot zot" % (cmds, _GLOBAL_FLAGS)
+        )
+    elif shell == "fish":
+        print("# zot fish completion — save to ~/.config/fish/completions/zot.fish")
+        print("complete -c zot -f")
+        print("complete -c zot -n __fish_use_subcommand -a '%s'" % cmds)
+        for flag in _GLOBAL_FLAGS.split():
+            if flag.startswith("--"):
+                print("complete -c zot -l %s" % flag[2:])
+    else:
+        die("unknown shell: %s (use bash, zsh, or fish)" % shell)
