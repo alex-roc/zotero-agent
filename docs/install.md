@@ -1,10 +1,19 @@
 # Installation
 
-Two parts: the **`zot` CLI + skill** (easy, `install.sh`), and the
-**`zotero-agent` bridge plugin** (a one-click XPI install from Zotero's UI — no restart
-needed).
+Two parts: the **`zot` CLI** (+ optional MCP server / Claude Code skill), and the
+**`zotero-agent` bridge plugin** (a one-click XPI install from Zotero's UI — no
+restart needed).
 
-## Quick path
+## Install the CLI
+
+The easy path (no checkout needed):
+
+```bash
+uv tool install zotero-agent           # or: pipx install zotero-agent
+uv tool install "zotero-agent[mcp]"    # include the MCP server (zot mcp)
+```
+
+From a checkout (developer / to get the Claude Code skill):
 
 ```bash
 git clone https://github.com/alex-roc/zotero-agent.git && cd zotero-agent
@@ -14,10 +23,10 @@ git clone https://github.com/alex-roc/zotero-agent.git && cd zotero-agent
 `install.sh`:
 
 1. symlinks `skill/` → `~/.claude/skills/zotero` (for Claude Code),
-2. copies `cli/zot` and the plugin into `skill/scripts/` (self-contained skill),
-3. symlinks `zot` onto your `PATH` (`~/.local/bin/zot`),
-4. runs `zot init` (generates token, writes config, detects profile),
-5. **builds the plugin XPI** (`dist/zotero-agent-bridge.xpi`) and prints the install steps.
+2. symlinks a dev `zot` onto your `PATH` (`~/.local/bin/zot`, runs from `./src`),
+3. **builds the plugin XPI** (`dist/zotero-agent-bridge.xpi`) and bundles it into
+   `skill/scripts/` (so the skill is self-contained when shared),
+4. runs `zot init` (generates/imports token, writes config, detects profile).
 
 Then install the plugin (next section) and re-run `zot init` to auto-detect
 your userID. Finish with `zot ping`.
