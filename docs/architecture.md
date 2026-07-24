@@ -1,7 +1,7 @@
 # Architecture
 
 ```mermaid
-flowchart TD
+flowchart BT
     U(["agent / user"])
     subgraph SURF ["zotero-agent"]
         direction LR

@@ -27,7 +27,7 @@ Code skill**, and portable **`AGENTS.md`** instructions.
 > See the honest [comparison](https://alex-roc.github.io/zotero-agent/compare/).
 
 ```mermaid
-flowchart TD
+flowchart BT
     U(["👤 you / AI agent"])
     subgraph SURF ["zotero-agent (one package)"]
         direction LR
