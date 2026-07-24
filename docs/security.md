@@ -47,6 +47,19 @@ the browser attack surface. Verified behavior:
 Zotero's HTTP server binds to loopback only by default, so the endpoint is not
 reachable from other machines. Do not change that binding.
 
+## Audit log
+
+Every bridge execution the CLI/MCP performs is appended to
+`~/.local/state/zotero-agent/audit.jsonl` — timestamp, a label, a SHA-256 prefix
+and first line of the code, byte size, and the ok/error result (plus the dry-run
+write count when applicable). It rotates at 5 MB. This is a local record for
+*your* review, not an access control; disable it with `ZOTERO_AGENT_NO_AUDIT=1`.
+
+Why this instead of an operation allowlist: an allowlist over an
+arbitrary-JS endpoint gives false assurance (anything can be expressed as JS),
+so we keep the endpoint honest — token-gated, browser-blocked, and *logged* —
+rather than pretending to constrain what the JS may do.
+
 ## Residual risk & guidance
 
 - Anyone who can read your config file gets the token. It is `0600`, but treat
