@@ -266,3 +266,12 @@ Before batch writes or deletions: back up `zotero.sqlite`, disable auto-sync,
 dry-run (return counts + samples), test on 1–2 items, use
 `Zotero.DB.executeTransaction()` for large batches, prefer trash over erase,
 re-enable sync afterward. See the skill's SKILL.md for the full checklist.
+
+> **Gotcha — "dry-run by intercepting `save()` LEAKS on Zotero 7."** Wrapping
+> `Zotero.Item.prototype.save/saveTx` to no-op does **not** reliably prevent a
+> persist (confirmed: a tag added under such a dry-run stayed on the item). So
+> never treat "run the code with save intercepted" as a safe preview. The safe
+> pattern is to **not execute the write at all** and report the intended change
+> from data you already hold (this is why `zot apply --dry-run` runs no JS).
+> `zot exec --dry-run` still executes with best-effort interception — `zot
+> backup` is the only hard guarantee.
