@@ -1,0 +1,99 @@
+---
+title: zotero-agent
+description: Full local control of your Zotero library — from your terminal or your AI agent. No cloud, no API key.
+template: splash
+hero:
+  tagline: Full local control of your Zotero library — from your terminal or your AI agent. No cloud, no API key.
+  actions:
+    - text: Get started
+      link: /zotero-agent/getting-started/install/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/alex-roc/zotero-agent
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+`zot` is a CLI and AI-agent toolkit for full **read-write** control of your
+*local* Zotero library: search, bulk-edit metadata, tag, deduplicate, import by
+DOI/ISBN/arXiv, export, and summarize PDFs into notes. Zotero's local API is
+read-only, so writes go through a tiny token-protected plugin — no zotero.org
+account, no API key, no cloud.
+
+## Why zotero-agent
+
+<CardGrid>
+  <Card title="Local-first & private" icon="approve-check">
+    Your library never leaves your machine. Reads hit Zotero's local HTTP API;
+    writes go through a loopback-only plugin. Nothing is sent to a cloud service.
+  </Card>
+  <Card title="Full local read-write" icon="pencil">
+    Zotero's local API is read-only by design. The bridge plugin is the only
+    complete **local** write path — real batch edits, dedup and tag cleanup on
+    your own disk.
+  </Card>
+  <Card title="Agent-ready and scriptable" icon="rocket">
+    Works as an MCP server for Claude Desktop, Codex CLI, Gemini CLI and Cursor —
+    and as a plain CLI you can pipe, script, and drop in a Makefile.
+  </Card>
+  <Card title="Honest security" icon="shield">
+    A documented three-layer model: required token, browser-origin guard,
+    loopback binding, plus an append-only audit log — not an insecure debug bridge.
+  </Card>
+</CardGrid>
+
+## Quickstart
+
+```bash
+uv tool install "zotero-agent[mcp]"   # install the CLI (+ MCP server)
+# then install the bridge plugin XPI: Tools -> Plugins -> gear -> Install Plugin From File
+zot init                               # generate a token, detect your userID
+zot ping                               # verify: local API up, bridge answering
+```
+
+## See it work
+
+{/* TODO: demo.gif */}
+
+```console
+$ zot stats
+Library: 2865 items - 41 collections - 512 tags
+Missing abstract: 1654   Missing DOI: 903   Missing date: 88
+Duplicated titles: 37
+
+# ...then, in your AI agent:
+> tag every abstract-less item #needs-abstract and merge duplicates in collection "Reading list"
+
+  backing up zotero.sqlite -> ~/.config/zotero-agent/backups/2026-07-24.sqlite
+  tagged 1654 items #needs-abstract  (undoable: zot undo last)
+  found 9 duplicate groups in "Reading list"; merged 9  (backup taken)
+  done.
+```
+
+## How it compares
+
+| | Local write | Needs account / API key | Works offline | Agent-ready (MCP) | Open source |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **zotero-agent** | ✓ | no | ✓ | ✓ | ✓ |
+| zotero-mcp | web only | yes | no | ✓ | ✓ |
+| pyzotero | web API | yes | no | library | ✓ |
+| Better BibTeX JSON-RPC | almost none | no | ✓ | no | ✓ |
+| Beaver | ✓ (cloud backend) | freemium account | no | GUI | no |
+
+<LinkCard
+  title="Full comparison"
+  description="Where zotero-agent fits — and where zotero-mcp is the better call."
+  href="/zotero-agent/compare/"
+/>
+
+## Next steps
+
+<CardGrid>
+  <LinkCard title="Install" href="/zotero-agent/getting-started/install/" />
+  <LinkCard title="Quickstart: CLI" href="/zotero-agent/getting-started/quickstart-cli/" />
+  <LinkCard title="Quickstart: AI agent" href="/zotero-agent/getting-started/quickstart-agent/" />
+  <LinkCard title="Cookbook" href="/zotero-agent/cookbook/" />
+</CardGrid>

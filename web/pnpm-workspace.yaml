@@ -1,0 +1,4 @@
+# Allow these packages to run their install/build scripts (pnpm blocks them by default).
+allowBuilds:
+  esbuild: true
+  sharp: true
