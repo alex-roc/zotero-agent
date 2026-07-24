@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`apply`/`update_items` dry-run no longer executes any JS**, so it can never
+  persist changes (the old monkey-patch-`save()` interception could leak writes
+  on Zotero 7). The preview is reported straight from the parsed edits.
+- `dedupe --fuzzy` is now tractable on large libraries (prefix-blocking instead
+  of O(n²) over the whole library) — seconds instead of timing out.
+- Bridge/read calls that time out now return a clean error instead of an
+  uncaught traceback (`post_code` and `main` handle `TimeoutError`/`OSError`).
+- `exec --dry-run` now states honestly that it executes the script with
+  best-effort interception and may still persist (backup is the guarantee).
+
 ## [0.2.0] — 2026-07-23
 
 The project was renamed from `zotero-cli-skill` to **`zotero-agent`** and rebuilt

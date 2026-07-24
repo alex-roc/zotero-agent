@@ -20,8 +20,8 @@ import urllib.parse
 import urllib.request
 
 from ..constants import EXIT_NOTFOUND, STATE_DIR, VERSION
-from ..http import post_code, run_js
-from ..jslib import DRYRUN_PREAMBLE, ITEM_MAP, field_name, scope_js
+from ..http import run_js
+from ..jslib import ITEM_MAP, field_name, scope_js
 from ..output import dump_json
 from ..resolve import resolve_key
 from ..term import confirm_write, die, info
@@ -124,10 +124,11 @@ def apply_edits_data(edits, dry_run=False, yes=True):
         clean = _prepare_edits(cfg, [dict(e) for e in edits])
         body = _APPLY_BODY % json.dumps(clean)
         if dry_run:
-            indented = "\n".join("    " + ln for ln in body.splitlines())
-            env = post_code(cfg, DRYRUN_PREAMBLE % indented)
-            res = (env.get("result") or {}) if env.get("ok") else {}
-            return {"dryRun": True, "wouldTouch": len(res.get("wouldWrite") or []), "edits": len(clean)}
+            # No JS is executed: we already know the edits, so report them from
+            # Python. (Never rely on monkey-patching save() to "preview" — it can
+            # leak writes on Zotero 7.)
+            return {"dryRun": True, "edits": len(clean),
+                    "keys": [e["key"] for e in clean]}
         op_id = _snapshot(cfg, [e["key"] for e in clean], "apply")
         res = run_js(cfg, body, label="apply")
         res["opId"] = op_id
@@ -146,12 +147,9 @@ def cmd_apply(args):
     body = _APPLY_BODY % json.dumps(edits)
 
     if args.dry_run:
-        indented = "\n".join("    " + ln for ln in body.splitlines())
-        env = post_code(cfg, DRYRUN_PREAMBLE % indented)
-        res = (env.get("result") or {}) if env.get("ok") else {}
-        writes = res.get("wouldWrite") or []
-        print("DRY-RUN — no changes were persisted.")
-        print("Would touch %d item(s) across %d edit(s)." % (len(writes), len(edits)))
+        # Report straight from the parsed edits — no JS runs, so nothing can leak.
+        print("DRY-RUN — no changes will be persisted.")
+        print("Would apply %d edit(s):" % len(edits))
         for e in edits[: args.samples]:
             ops = []
             if e.get("set"):

@@ -70,13 +70,16 @@ def cmd_exec(args):
             die(env.get("error") or "unknown error from the bridge", code=EXIT_CONN)
         res = env.get("result") or {}
         writes = res.get("wouldWrite") or []
-        print("DRY-RUN — no changes were persisted.")
+        print("DRY-RUN — the script WAS executed with best-effort write interception.")
+        print("This is NOT a guarantee: some writes can still persist on Zotero 7. "
+              "Take `zot backup` first for a hard guarantee; prefer `zot apply` "
+              "(whose dry-run runs no JS) for batch edits.")
         if writes:
-            print("Would perform %d write(s):" % len(writes))
+            print("Intercepted %d write attempt(s):" % len(writes))
             for w in writes:
                 print("  %-16s %s %s" % (w.get("op", ""), w.get("kind", ""), w.get("title", "")))
         else:
-            print("Would perform 0 writes (nothing to persist).")
+            print("Intercepted 0 write attempts.")
         if res.get("error"):
             print(
                 "\nNote: the script raised after interception (often a read-back of a\n"

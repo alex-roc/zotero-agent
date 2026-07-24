@@ -201,6 +201,10 @@ def main(argv=None):
         sys.exit(2)
     except BrokenPipeError:
         pass
+    except (TimeoutError, OSError) as e:
+        print("error: request timed out or failed (%s). For heavy operations, "
+              "scope with --collection." % e, file=sys.stderr)
+        sys.exit(2)
 
 
 def die_print(err):

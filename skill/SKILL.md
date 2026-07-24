@@ -175,10 +175,11 @@ or destructive run:
 1. **Back up** with `zot backup` (snapshots `zotero.sqlite`, prints the path).
    Especially before `zot dedupe --merge`.
 2. **Disable auto-sync** in Zotero → Preferences → Sync (so a mistake doesn't propagate).
-3. **Dry-run / scope first**: `zot exec script.js --dry-run` intercepts writes and
-   reports what *would* change without persisting (best-effort — a script that reads
-   back its own new writes may error; the backup is the hard guarantee). Prefer
-   scoping `dedupe`/`missing` to `--collection` over the whole library.
+3. **Dry-run / scope first**: for batch edits prefer **`zot apply edits.jsonl --dry-run`**,
+   whose preview runs **no** JS and therefore cannot persist. `zot exec script.js
+   --dry-run` still *executes* the script with best-effort write interception — it
+   can leak writes on Zotero 7, so it is **not** a guarantee; `zot backup` is.
+   Prefer scoping `dedupe`/`missing` to `--collection` over the whole library.
 4. Apply to **1–2 items** and verify before running on the full set.
 5. Use `Zotero.DB.executeTransaction()` for large batches (see recipes).
 6. Deletions: prefer the trash (`item.deleted = true; saveTx()`), not

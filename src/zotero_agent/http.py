@@ -160,6 +160,11 @@ def post_code(cfg, code, timeout=120):
             return {"ok": False, "error": "HTTP %s: %s" % (e.code, raw)}
     except urllib.error.URLError as e:
         return {"ok": False, "error": "cannot reach %s (%s)" % (url, e.reason)}
+    except (TimeoutError, OSError) as e:
+        # a slow bridge call (e.g. a heavy JS loop) can hit the socket timeout;
+        # surface it cleanly instead of crashing with a traceback.
+        return {"ok": False, "error": "bridge call to %s timed out or failed (%s). "
+                "For heavy operations, scope with --collection." % (url, e)}
 
 
 def bbt_rpc(cfg, method, params, timeout=30):
