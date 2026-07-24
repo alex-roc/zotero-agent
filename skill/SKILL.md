@@ -3,7 +3,7 @@ name: zotero
 description: >-
   Control a local Zotero library programmatically — search, read, create, edit,
   tag, organize into collections, delete, and export items — via the `zot` CLI
-  (read API + the zotero-exec write endpoint). Use whenever the user wants to
+  (read API + the zotero-agent bridge write endpoint). Use whenever the user wants to
   query or modify their Zotero library, batch-edit references, manage tags or
   collections, find items missing metadata (no abstract/date/DOI), find
   duplicates, export citations, or run arbitrary Zotero JS. Also use it to add
@@ -11,7 +11,7 @@ description: >-
   get library stats, format bibliographies, read or ask questions about an
   item's PDF, summarize a document at multiple levels (whole/chapter/section),
   read a PDF's highlights/annotations, or create notes on items. Requires the
-  zotero-exec plugin installed and Zotero running.
+  zotero-agent bridge plugin installed and Zotero running.
 ---
 
 # Zotero control (via the `zot` CLI)
@@ -19,17 +19,23 @@ description: >-
 You control a running Zotero instance through **`zot`**, a stdlib-only Python CLI.
 
 - **Reads** go through Zotero's local HTTP API (fast, GET-only).
-- **Writes** go through the `zotero-exec` plugin: `zot exec` runs arbitrary
+- **Writes** go through the `zotero-agent` bridge plugin: `zot exec` runs arbitrary
   privileged Zotero JS in-process. This is the only complete local write path
   (Zotero's HTTP API is read-only by design; see `references/setup.md`).
 
-`zot` is on `PATH` after install, or run `scripts/zot` from this skill.
+`zot` is on `PATH` after install (`uv tool install zotero-agent`, or the repo's
+`install.sh`). The bundled `scripts/zotero-agent-bridge.xpi` is the plugin to
+install in Zotero if the bridge endpoint is not answering.
 
 ## First: confirm the setup is live
 
-Run `zot ping`. It must show the local API up, the zotexec endpoint answering
-`1+1 == 2`, and a known userID. If anything fails, point the user to
-`references/setup.md` — do **not** try to work around a missing plugin.
+Run `zot ping`. It must show the local API up, the bridge endpoint answering
+`1+1 == 2`, a known userID, and the `zot` version. If anything fails, point the
+user to `references/setup.md` — do **not** try to work around a missing plugin.
+
+> Beyond this skill (Claude Code), `zot mcp` exposes the same operations as an
+> MCP server for Claude Desktop, Codex CLI, Gemini CLI and Cursor. See the repo's
+> `docs/` and website for per-client setup; the safety rules below apply equally.
 
 ## Reading (prefer the fast API)
 
@@ -78,13 +84,29 @@ zot collection <name> [--parent K]                      # create a (sub)collecti
 zot note <key> --file note.html [--if-not-exists]       # add a child note
 ```
 
+Batch / higher-level (all **undoable** except merges — see safety below):
+
+```bash
+zot apply edits.jsonl [--dry-run]     # declarative batch edit; see below
+zot undo last | <op-id> | list        # restore a prior apply/enrich
+zot enrich --field doi|date|abstract --source crossref|openalex [--dry-run]
+zot tag normalize [--map old_new.csv] [--dry-run]   # fold case/space tag variants
+zot dedupe --by title --fuzzy         # near-duplicate titles (Levenshtein)
+```
+
+`zot apply` is the batch primitive: each JSONL line is
+`{"key":"ABCD1234","set":{"date":"2021"},"addTags":["ml"],"removeTags":[],"addToCollection":"Name","trash":false}`.
+It snapshots the affected items first, so `zot undo` can restore them (a merge is
+**not** reversible). This is how you do LLM-assisted bulk edits: *you* decide the
+values, write the JSONL, and `zot apply` writes them — the CLI never calls an LLM.
+
 `zot missing` uses the reliable `getField` check, not the empty-string search
 condition (which silently returns 0 — see recipes.md). Use `exec` only for
 operations these commands don't cover.
 
 **Global flags** (all commands): `--json` (machine output), `-q/--quiet`,
 `--debug`, `--yes` (confirm writes non-interactively), and config overrides
-`--base/--token/--user-id` (or `ZOTEXEC_*` env). **Exit codes:** 0 ok, 1 error,
+`--base/--token/--user-id` (or `ZOTERO_AGENT_*` env). **Exit codes:** 0 ok, 1 error,
 2 connection/exec, 3 not-found, 4 config. For big `--json` reads, note that
 `author`/`missing` omit abstracts by default (`--detail full` to include them).
 

@@ -11,6 +11,16 @@
 # Python
 __pycache__/
 *.pyc
+*.egg-info/
+.venv/
+
+# Website (Astro Starlight)
+/web/node_modules/
+/web/dist/
+/web/.astro/
+
+# Release scratch
+/release-assets/
 
 # skill-creator eval workspace (artefactos + backup)
 /zotero-workspace/

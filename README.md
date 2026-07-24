@@ -1,97 +1,112 @@
-# zotero-cli-skill
+# zotero-agent
 
-Control a **local Zotero** library programmatically — search, read, create,
-edit, tag, organize, delete, export — from your terminal or from an AI agent
-(Claude Code). No cloud, no daemon, no pasting JS into a console by hand.
+**Full local control of your Zotero library — from your terminal or your AI agent. No cloud, no API key.**
+
+`zot` is a CLI and AI-agent toolkit that gives you full **read-write** control of
+your *local* Zotero library: search, bulk-edit metadata, tag, deduplicate, import
+by DOI/ISBN/arXiv, export, and summarize PDFs into notes. Zotero's local API is
+read-only, so writes go through a tiny plugin exposing a single token-protected
+endpoint, with a documented [three-layer security model](docs/security.md). No
+zotero.org account, no API key, no cloud — **your library never leaves your machine.**
 
 ```
-Agent / user → [ zotero skill | zot CLI ] ─┬─ read  → Zotero local API /api/…  (GET, fast)
-                                            └─ write → POST /zotexec (zotero-exec plugin, JS)
+Agent / user → [ MCP server | agent skill | zot CLI ] ─┬─ read  → Zotero local API /api/…  (GET, fast)
+                                                        └─ write → POST /zotero-agent (bridge plugin, JS)
 ```
 
-Zotero's local HTTP API is **read-only** by design, so writes go through a tiny
-bootstrap plugin (`zotero-exec`) that exposes one token-protected endpoint
-running privileged Zotero JS in-process. See [`docs/architecture.md`](docs/architecture.md)
-for why.
+## Why this exists
+
+The dominant Zotero automation tools (zotero-mcp, pyzotero) can only *write* via
+the zotero.org web API — which needs an account, an API key and sync. Zotero's
+**local** HTTP API returns `501` on every write. The only way to write locally is
+a plugin, and that is exactly what the `zotero-agent` bridge is. That makes this
+the local-first, offline, private option: batch metadata edits, real dedup, and
+tag cleanup that people have asked Zotero for [since 2016](https://forums.zotero.org/discussion/111815/feature-batch-editing-metadata-for-multiple-items) — done on your own machine.
+
+## Three ways to use it
+
+- **AI agents via MCP** — `zot mcp` is a Model Context Protocol server for Claude
+  Desktop, **Codex CLI**, **Gemini CLI**, Cursor, and any MCP client. See
+  [`docs/ai-agents.md`](docs/ai-agents.md).
+- **Claude Code skill** — the `zotero` skill drives `zot` with a safe workflow.
+- **Plain CLI** — script it in bash, pipe it, put it in a Makefile.
 
 ## What's inside
 
 | Path | What |
 |------|------|
-| `plugin/zotero-exec/` | The write endpoint (`POST /zotexec`), ~200 lines. |
-| `cli/zot` | Stdlib-only Python CLI. **Read/analyze:** `search`, `get`, `cite`, `pdf`, `collections`, `tags`, `export`, `missing`, `author`, `stats`, `recent`, `bib`, `annotations`, `related`, `notes`, `lint`. **Edit/organize** (safe writes): `add`, `dedupe`, `tag`, `set`, `move`, `collection`, `note`. **Escape hatch:** `exec`. **Safety/setup:** `backup`, `ping`, `init`. Global flags: `--json`, `-q`, `--yes`, `--base/--token/--user-id`. |
+| `src/zotero_agent/` | The Python package: CLI, command modules, JS builders, MCP server. Stdlib-only core. |
+| `plugin/zotero-agent-bridge/` | The write endpoint (`POST /zotero-agent`), token-protected, ~200 lines. |
 | `skill/` | The `zotero` skill for Claude Code (SKILL.md + recipe book + evals). |
-| `docs/` | Install, security model, architecture. |
-| `install.sh` | Wires it all up. |
+| `docs/` | Install, security model, architecture, AI-agent setup. |
+| `web/` | The documentation site (Astro Starlight → GitHub Pages). |
 
-## Quickstart
+## Install
 
 ```bash
-git clone https://github.com/alex-roc/zotero-cli-skill.git && cd zotero-cli-skill
-./install.sh                # skill + CLI + config; builds dist/zotexec.xpi
-# in Zotero: Tools -> Plugins -> gear -> Install Plugin From File -> dist/zotexec.xpi
-zot init                    # auto-detects your userID via the plugin
-zot ping                    # verify all three layers
+# CLI (+ optional MCP server):
+uv tool install zotero-agent            # or: pipx install zotero-agent
+uv tool install "zotero-agent[mcp]"     # include the MCP server
+
+# then install the bridge plugin in Zotero:
+#   Tools → Plugins → gear → "Install Plugin From File" → the .xpi from Releases
+zot init      # generates a token, writes config, auto-detects your userID
+zot ping      # verify: local API up, bridge answering, userID known
 ```
 
-Full instructions: [`docs/install.md`](docs/install.md).
+From a checkout, `./install.sh` wires up the skill, a dev `zot`, and builds the
+XPI. Full instructions: [`docs/install.md`](docs/install.md).
 
 ## Using the CLI
 
 ```bash
-zot search "bolivia" --limit 10        # read (fast API)
-zot collections                         # list collections
-zot get ABCD1234                        # one item's fields (Zotero key or BBT citekey)
-zot cite myCitekey2025                   # resolve a Better BibTeX citekey -> key + PDF
-zot pdf myCitekey2025                    # PDF path (accepts key or citekey)
-zot export "My Collection" --format csljson   # export (json/csv/csljson/bibtex/ris)
-zot missing abstract --collection SS5MVVB6   # items lacking a field
-zot author "Ojeda"                            # items by an author
+zot search "bolivia" --limit 10               # read (fast API)
+zot get ABCD1234                              # one item (Zotero key or BBT citekey)
+zot missing abstract --collection SS5MVVB6    # items lacking a field
 zot stats                                     # library analytics
 zot add doi 10.1371/journal.pmed.0020124 --pdf   # import by identifier (+ OA PDF)
-zot dedupe --collection SS5MVVB6 --merge --yes   # find & merge duplicates (scoped)
-zot tag add "#revisar" ABCD1234 EFGH5678 --yes   # bulk tag
-zot set publisher "Lab TecnoSocial" ABCD1234 --yes
-zot note ABCD1234 --file summary.html         # add a child note
-zot backup                                    # snapshot the DB before big edits
-zot exec risky.js --dry-run                   # preview writes without persisting
-zot exec 'return Zotero.version;'       # write path: run privileged JS
-zot exec my-script.js                   # ...from a file
-echo 'return 1+1;' | zot exec -         # ...from stdin
+zot dedupe --by title --fuzzy                 # find near-duplicate titles
+zot dedupe --merge --yes                      # merge duplicates (oldest = master)
+zot enrich --field doi --dry-run              # fill missing DOIs from Crossref
+zot apply edits.jsonl                         # declarative batch edit (undoable)
+zot undo last                                 # roll it back
+zot tag normalize --dry-run                   # fold case/space tag variants
+zot export "My Collection" --format bibtex --out refs.bib
+zot exec 'return Zotero.version;'             # escape hatch: run privileged JS
 ```
 
-The write workhorse is `zot exec`: the argument is a file, `-` (stdin), or
-inline JS. The code is an async function body with `Zotero` in scope; `return`
-comes back as JSON. The canonical recipe book (create/edit/tag/move/delete/
-export/dedup) is [`skill/references/recipes.md`](skill/references/recipes.md).
+Add `--json` to any command for machine-readable output. Writes refuse to run
+non-interactively without `--yes`. The canonical JS recipe book is
+[`skill/references/recipes.md`](skill/references/recipes.md).
 
-## Using with Claude Code
+## Using with an AI agent
 
-`install.sh` symlinks the skill to `~/.claude/skills/zotero`. Ask Claude things
-like *"export collection SS5MVVB6 to JSON"*, *"tag every abstract-less item
-#revisar"*, *"find duplicate titles"*, *"summarize the PDF of this item chapter
-by chapter and save it as a note"*, or *"what does this paper say about X?"* —
-it drives `zot` (including `zot pdf` to read the attached PDF) and follows a safe
-workflow (backup, sync-off, dry-run, test-small) for bulk or destructive edits.
+Ask *"tag every abstract-less item #review and merge duplicate titles in
+collection X"*, *"fill in missing DOIs"*, or *"summarize this paper's PDF chapter
+by chapter and save it as a note"*. The agent drives `zot` and follows a safe
+workflow (backup → sync-off → dry-run → small batch) for bulk or destructive edits.
+Batch edits are **undoable** (`zot undo`).
 
 ## Requirements
 
-- Zotero 7 or 9.x running, local API enabled (default).
-- Python 3.8+ (stdlib only).
-- macOS is tested; Linux/Windows paths are noted in `docs/install.md`.
+- Zotero 7+ (tested through 9.x) running, local API enabled (default).
+- Python 3.9+ (stdlib-only core; the MCP server needs the `[mcp]` extra).
+- macOS and Linux; Windows paths are noted in `docs/install.md`.
 
 ## Security
 
 Arbitrary local JS execution, gated by a required token + browser-origin
-rejection + loopback binding. Read [`docs/security.md`](docs/security.md) before
-exposing anything. License: [MIT](LICENSE).
+rejection + loopback binding, with an append-only audit log. This is a deliberate
+capability; read [`docs/security.md`](docs/security.md) before installing.
+License: [MIT](LICENSE).
 
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests   # run the CLI unit tests (stdlib only, no network)
-bash plugin/build.sh                     # rebuild dist/zotexec.xpi
+python3 -m unittest discover -s tests   # unit + fake-server tests (no network, no Zotero)
+uvx ruff check src tests                 # lint
+uv build                                 # build wheel + sdist
+bash plugin/build.sh                     # rebuild the bridge XPI
 ```
 
-Canonical sources live in `cli/` and `plugin/`; `install.sh` copies them into
-`skill/scripts/` so the skill is self-contained when shared.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CHANGELOG.md`](CHANGELOG.md).

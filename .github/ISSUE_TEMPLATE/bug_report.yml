@@ -1,0 +1,37 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report! Please include the diagnostics below — they resolve most issues quickly.
+  - type: textarea
+    id: ping
+    attributes:
+      label: Output of `zot ping`
+      description: Run `zot ping` and paste the full output.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `zot --version`
+      placeholder: zot (zotero-agent) 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform + Zotero version
+      placeholder: macOS 14 / Zotero 7.0.15
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did (the exact command or agent prompt), what you expected, and what happened instead.
+    validations:
+      required: true

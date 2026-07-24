@@ -1,0 +1,44 @@
+name: Release
+
+# Tag a version (vX.Y.Z) to build the XPI + wheel, publish a GitHub Release with
+# the XPI attached, and publish the package to PyPI via Trusted Publishing.
+#
+# One-time setup on pypi.org: add a Trusted Publisher for this repo + workflow
+# (Publishing → Add a new pending publisher) so no API token is needed here.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write        # create the GitHub Release
+  id-token: write        # PyPI Trusted Publishing (OIDC)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+      - name: Build wheel + sdist (into dist/)
+        run: uv build
+
+      - name: Build the bridge XPI (into release-assets/, keeping dist/ PyPI-only)
+        run: |
+          bash plugin/build.sh
+          mkdir -p release-assets
+          mv dist/zotero-agent-bridge-*.xpi release-assets/
+          rm -f dist/zotero-agent-bridge.xpi   # drop the symlink so dist/ is PyPI-only
+
+      - name: Create GitHub Release with the XPI
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/zotero-agent-bridge-*.xpi
+          generate_release_notes: true
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist          # wheel + sdist only
+          verbose: true

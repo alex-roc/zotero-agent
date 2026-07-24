@@ -1,17 +1,17 @@
 # Security model
 
-`POST /zotexec` runs **arbitrary privileged JavaScript** inside Zotero. That is
+`POST /zotero-agent` runs **arbitrary privileged JavaScript** inside Zotero. That is
 powerful and deliberately so — it is the price of a complete local write path.
 The endpoint is protected by three layers.
 
 ## 1. Token (required)
 
-Every request must carry the header `X-Zotexec-Token` matching the configured
+Every request must carry the header `X-Zotero-Agent-Token` matching the configured
 token. Without a configured token the endpoint returns **403** (fail-closed) —
 it never runs code with no token. Token resolution order:
 
-1. Zotero pref `extensions.zotexec.token` (if set), else
-2. the `token` field in `~/.config/zotero-exec/config.json`.
+1. Zotero pref `extensions.zotero-agent.token` (if set), else
+2. the `token` field in `~/.config/zotero-agent/config.json`.
 
 The config file is the single source of truth the `zot` CLI writes and the
 plugin reads, so rotating the token needs no Zotero restart. `zot init`

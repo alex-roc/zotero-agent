@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 #
-# install.sh — wire up the zotero-cli-skill on this machine.
+# install.sh — wire up zotero-agent on this machine (developer / from-checkout).
 #
 #   1. symlink skill/           -> ~/.claude/skills/zotero
-#   2. copy cli/zot + plugin/   -> skill/scripts/   (self-contained skill)
-#   3. symlink zot              -> ~/.local/bin/zot (on PATH)
+#   2. build the bridge XPI     -> dist/  (+ bundle into skill/scripts/ for sharing)
+#   3. symlink zot              -> ~/.local/bin/zot   (dev shim; uses ./src)
 #   4. run `zot init`           (token + config + profile/userID detection)
-#   5. print the plugin install steps (optionally do them, with Zotero closed)
+#   5. print the plugin install steps
+#
+# For a plain install (no checkout), prefer:  uv tool install zotero-agent
+# (add the MCP server with:  uv tool install "zotero-agent[mcp]").
 #
 # It never edits Zotero prefs or restarts Zotero without asking.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ID="zotexec@zotero-cli-skill"
-PLUGIN_SRC="$REPO/plugin/zotero-exec"
+PLUGIN_ID="zotero-agent-bridge@zotero-agent"
+PLUGIN_SRC="$REPO/plugin/zotero-agent-bridge"
 SKILL_SRC="$REPO/skill"
 SKILL_DEST="$HOME/.claude/skills/zotero"
 BIN_DEST="$HOME/.local/bin/zot"
@@ -36,35 +39,29 @@ ln -s "$SKILL_SRC" "$SKILL_DEST"
 info "linked"
 
 # ---------------------------------------------------------------- #
-say "2. Bundle CLI + plugin into skill/scripts/ (self-contained)"
-mkdir -p "$SKILL_SRC/scripts"
-cp "$REPO/cli/zot" "$SKILL_SRC/scripts/zot"
-chmod +x "$SKILL_SRC/scripts/zot"
-rm -rf "$SKILL_SRC/scripts/zotero-exec"
-cp -R "$PLUGIN_SRC" "$SKILL_SRC/scripts/zotero-exec"
-info "copied zot + zotero-exec"
-
-# ---------------------------------------------------------------- #
-say "3. CLI on PATH -> $BIN_DEST"
+say "2. CLI on PATH -> $BIN_DEST"
 mkdir -p "$HOME/.local/bin"
 ln -sf "$REPO/cli/zot" "$BIN_DEST"
-info "linked (ensure ~/.local/bin is on your PATH)"
+info "linked dev shim (ensure ~/.local/bin is on your PATH)"
+
+# ---------------------------------------------------------------- #
+say "3. Build the bridge XPI"
+bash "$REPO/plugin/build.sh"
+XPI="$REPO/dist/zotero-agent-bridge.xpi"
+mkdir -p "$SKILL_SRC/scripts"
+cp -L "$XPI" "$SKILL_SRC/scripts/zotero-agent-bridge.xpi" 2>/dev/null \
+  && info "bundled XPI into skill/scripts/ (for a self-contained shared skill)"
 
 # ---------------------------------------------------------------- #
 say "4. zot init"
 "$PY" "$REPO/cli/zot" init || true
 
 # ---------------------------------------------------------------- #
-say "5. Build the plugin XPI"
-bash "$REPO/plugin/build.sh"
-XPI="$REPO/dist/zotexec.xpi"
-cp -L "$XPI" "$SKILL_SRC/scripts/zotexec.xpi" 2>/dev/null && info "bundled XPI into skill/scripts/"
 echo
-say "Install the plugin (standard Zotero flow — no need to close Zotero):"
+say "5. Install the plugin (standard Zotero flow — no need to close Zotero):"
 cat <<EOF
   1) In Zotero:  Tools -> Plugins -> the gear icon (top right)
        -> "Install Plugin From File..."
   2) Choose:  $XPI
   3) Then run:  zot init   (auto-detects your userID)  &&  zot ping
 EOF
-info "The bundled skill copy at skill/scripts/ includes this XPI too."

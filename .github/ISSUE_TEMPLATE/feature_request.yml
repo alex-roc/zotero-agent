@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea or a new command/tool
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem / use case
+      description: What are you trying to do with your Zotero library that's hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed solution
+      description: A command, MCP tool, or behaviour you have in mind (rough is fine).
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options: ["CLI", "MCP server", "Claude Code skill", "the bridge plugin", "not sure"]

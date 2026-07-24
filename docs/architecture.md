@@ -2,7 +2,7 @@
 
 ```
 Agent / user → [ zotero skill | zot CLI ] ─┬─ read  → local HTTP API  /api/…   (GET, fast)
-                                            └─ write → POST /zotexec  (zotero-exec plugin, arbitrary JS)
+                                            └─ write → POST /zotero-agent  (zotero-agent bridge plugin, arbitrary JS)
 ```
 
 Three layers, each doing the one thing it is good at.
@@ -25,14 +25,14 @@ Other options were evaluated and rejected:
 
 The only complete *local* write path is code running **inside** Zotero's
 privileged context, calling `Zotero.Item…saveTx()` and friends directly. That
-is exactly what a bootstrap plugin can do. `zotero-exec` is a ~200-line plugin
-that registers one endpoint, `POST /zotexec`, which runs a supplied async JS
+is exactly what a bootstrap plugin can do. the bridge is a ~200-line plugin
+that registers one endpoint, `POST /zotero-agent`, which runs a supplied async JS
 body in-process and returns the result as JSON. This mirrors the well-known
 `zotero-api-endpoint` plugin pattern.
 
 ## The three layers
 
-- **Layer 0 — `zotero-exec` plugin** (`plugin/zotero-exec/`): the endpoint.
+- **Layer 0 — `zotero-agent` bridge plugin** (`plugin/zotero-agent-bridge/`): the endpoint.
   Token-protected, origin-guarded, loopback-only. Fully general — every recipe
   in the memory/reference book works over it unchanged.
 - **Layer 1 — `zot` CLI** (`cli/zot`): stdlib-only Python. Reads hit the fast
@@ -43,7 +43,7 @@ body in-process and returns the result as JSON. This mirrors the well-known
   `tag`, `set`, `move`, `collection`, `note`) too, each safe-by-default
   (refuse non-interactive writes without `--yes`). `exec` is the raw escape
   hatch (with `--dry-run`); `backup` snapshots the DB; `ping`/`init` set up.
-  Config precedence: flags > `ZOTEXEC_*` env > `~/.config/zotero-exec/config.json`.
+  Config precedence: flags > `ZOTERO_AGENT_*` env > `~/.config/zotero-agent/config.json`.
 - **Layer 2 — `zotero` skill** (`skill/`): teaches an agent to drive `zot`,
   including the safe workflow for bulk/destructive operations.
 

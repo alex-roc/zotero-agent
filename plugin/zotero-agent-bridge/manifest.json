@@ -1,0 +1,15 @@
+{
+	"manifest_version": 2,
+	"name": "Zotero Agent Bridge",
+	"version": "0.2.0",
+	"description": "Local write endpoint for Zotero: POST /zotero-agent runs privileged JS, token-protected. The write path for the zotero-agent CLI, MCP server and agent skill.",
+	"homepage_url": "https://github.com/alex-roc/zotero-agent",
+	"applications": {
+		"zotero": {
+			"id": "zotero-agent-bridge@zotero-agent",
+			"update_url": "https://raw.githubusercontent.com/alex-roc/zotero-agent/main/updates.json",
+			"strict_min_version": "7.0",
+			"strict_max_version": "10.*"
+		}
+	}
+}

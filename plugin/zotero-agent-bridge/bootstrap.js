@@ -1,12 +1,12 @@
 /*
- * zotero-exec — bootstrap plugin
+ * zotero-agent bridge — bootstrap plugin
  *
- * Registers a single local HTTP endpoint:  POST /zotexec
+ * Registers a single local HTTP endpoint:  POST /zotero-agent
  * Body: { "code": "<async JS body>" }  ->  runs the code in Zotero's privileged
- * context and returns { ok: true, result } or { ok: false, error }.
+ * context and returns { ok: true, result, version } or { ok: false, error }.
  *
- * The endpoint is the write path for the `zot` CLI and the `zotero` skill.
- * See docs/security.md for the threat model. Short version:
+ * The endpoint is the write path for the `zot` CLI, the MCP server and the
+ * agent skill. See docs/security.md for the threat model. Short version:
  *   - a token is REQUIRED (403 without it),
  *   - browser-origin requests are rejected (CSRF / DNS-rebinding),
  *   - the server binds to loopback (Zotero default).
@@ -17,37 +17,41 @@ if (typeof Zotero == "undefined") {
   var Zotero;
 }
 
-var ZOTEXEC = {
-  endpointPath: "/zotexec",
+var BRIDGE = {
+  version: "0.2.0",
+  endpointPath: "/zotero-agent",
+  tokenPref: "extensions.zotero-agent.token",
+  tokenHeader: "X-Zotero-Agent-Token",
+  configDir: "zotero-agent",
   // AsyncFunction constructor from the privileged realm (preferred executor).
   AsyncFunction: Object.getPrototypeOf(async function () {}).constructor,
 };
 
 function log(msg) {
   try {
-    Zotero.debug("[zotexec] " + msg);
+    Zotero.debug("[zotero-agent] " + msg);
   } catch (e) {
-    dump("[zotexec] " + msg + "\n");
+    dump("[zotero-agent] " + msg + "\n");
   }
 }
 
 /* ------------------------------------------------------------------ *
  * Token resolution
- *   1. pref override  extensions.zotexec.token
- *   2. shared config file  ~/.config/zotero-exec/config.json  { "token": ... }
+ *   1. pref override  extensions.zotero-agent.token
+ *   2. shared config file  ~/.config/zotero-agent/config.json  { "token": ... }
  * The config file is the single source of truth the `zot` CLI also reads,
  * so rotating the token needs no Zotero restart.
  * ------------------------------------------------------------------ */
 async function getConfiguredToken() {
   try {
-    var pref = Zotero.Prefs.get("extensions.zotexec.token", true);
+    var pref = Zotero.Prefs.get(BRIDGE.tokenPref, true);
     if (pref) return String(pref);
   } catch (e) {
     /* pref not set */
   }
   try {
     var home = Services.dirsvc.get("Home", Components.interfaces.nsIFile).path;
-    var cfgPath = PathUtils.join(home, ".config", "zotero-exec", "config.json");
+    var cfgPath = PathUtils.join(home, ".config", BRIDGE.configDir, "config.json");
     var txt = await Zotero.File.getContentsAsync(cfgPath);
     var cfg = JSON.parse(txt);
     if (cfg && cfg.token) return String(cfg.token);
@@ -101,7 +105,7 @@ async function runCode(code) {
   }
   var ZoteroPane = win && win.ZoteroPane ? win.ZoteroPane : null;
   try {
-    var fn = new ZOTEXEC.AsyncFunction("Zotero", "ZoteroPane", "window", code);
+    var fn = new BRIDGE.AsyncFunction("Zotero", "ZoteroPane", "window", code);
     return await fn(Zotero, ZoteroPane, win);
   } catch (e) {
     if (e instanceof SyntaxError || /CSP|unsafe-eval|Function/.test(String(e))) {
@@ -138,28 +142,29 @@ ExecEndpoint.prototype = {
       // 1. auth
       var expected = await getConfiguredToken();
       if (!expected) {
-        return json(403, { ok: false, error: "zotexec: no token configured" });
+        return json(403, { ok: false, error: "zotero-agent: no token configured" });
       }
-      var provided = headerGet(headers, "X-Zotexec-Token");
+      var provided = headerGet(headers, BRIDGE.tokenHeader);
       if (provided !== expected) {
-        return json(403, { ok: false, error: "zotexec: invalid or missing token" });
+        return json(403, { ok: false, error: "zotero-agent: invalid or missing token" });
       }
 
       // 2. origin guard
       var bad = originRejected(headers);
       if (bad) {
-        return json(403, { ok: false, error: "zotexec: " + bad });
+        return json(403, { ok: false, error: "zotero-agent: " + bad });
       }
 
       // 3. body
       if (!data || typeof data.code !== "string" || !data.code.trim()) {
-        return json(400, { ok: false, error: "zotexec: body must be {\"code\": \"...\"}" });
+        return json(400, { ok: false, error: "zotero-agent: body must be {\"code\": \"...\"}" });
       }
 
-      // 4. run
+      // 4. audit + run
+      log("exec (" + data.code.length + " bytes)");
       var result = await runCode(data.code);
       if (result === undefined) result = null;
-      return json(200, { ok: true, result: result });
+      return json(200, { ok: true, result: result, version: BRIDGE.version });
     } catch (e) {
       log("error: " + (e && e.stack ? e.stack : e));
       return json(500, {
@@ -179,15 +184,15 @@ function registerEndpoint() {
     log("Zotero.Server not available; endpoint not registered");
     return;
   }
-  Zotero.Server.Endpoints[ZOTEXEC.endpointPath] = ExecEndpoint;
-  log("registered endpoint " + ZOTEXEC.endpointPath);
+  Zotero.Server.Endpoints[BRIDGE.endpointPath] = ExecEndpoint;
+  log("registered endpoint " + BRIDGE.endpointPath);
 }
 
 function unregisterEndpoint() {
   try {
     if (Zotero.Server && Zotero.Server.Endpoints) {
-      delete Zotero.Server.Endpoints[ZOTEXEC.endpointPath];
-      log("unregistered endpoint " + ZOTEXEC.endpointPath);
+      delete Zotero.Server.Endpoints[BRIDGE.endpointPath];
+      log("unregistered endpoint " + BRIDGE.endpointPath);
     }
   } catch (e) {
     /* ignore */
