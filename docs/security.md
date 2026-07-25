@@ -60,6 +60,21 @@ arbitrary-JS endpoint gives false assurance (anything can be expressed as JS),
 so we keep the endpoint honest — token-gated, browser-blocked, and *logged* —
 rather than pretending to constrain what the JS may do.
 
+## Distribution & updates
+
+The plugin is not signed by Zotero (it is not in Zotero's plugin directory), so
+its trust chain is HTTPS plus this repo:
+
+- The XPI is published **only** as a GitHub Release asset, built in CI from the
+  tagged source by `scripts/build_xpi.py` — a deterministic zip, so you can
+  rebuild a release from the tag and compare bytes.
+- Updates go through Zotero's own plugin-update mechanism: the manifest's
+  `update_url` points at `updates.json` in this repo, which records the release
+  URL **and** the asset's `sha256` (`update_hash`). Zotero refuses an update whose
+  hash does not match, so a swapped file at the download URL cannot be installed.
+- The bridge is ~200 lines of JS you can read before installing, and `zot ping`
+  reports the running plugin's version so you can tell what is actually loaded.
+
 ## Residual risk & guidance
 
 - Anyone who can read your config file gets the token. It is `0600`, but treat

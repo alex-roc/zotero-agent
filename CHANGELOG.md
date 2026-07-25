@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+- **The Homebrew tap is no longer an install route.** The formula installed the
+  package without the `[mcp]` extra (so `zot mcp` was missing), pinned
+  `python@3.13`, and needed a manual `url`/`sha256` bump per release — three
+  maintenance edges for a third route that `uv tool install` already covers.
+  `packaging/homebrew/` is gone; install with `uv tool` or `pipx`.
+
+### Fixed
+- The README's command table still advertised the retired `zot plugin`; a test now
+  compares that table against the CLI in both directions.
+- `docs/architecture.md` still described bundling the XPI into `skill/scripts/`,
+  and `docs/security.md` documented no trust chain for the plugin — it now covers
+  CI-built release assets and `sha256`-verified auto-updates.
+- Documented the two update gotchas found while verifying 0.3.0: Zotero only
+  checks for plugin updates every 24h (and the "Check for Updates" menu lives on
+  the plugin *list*, not the detail pane), and `uv` may serve cached index
+  metadata unless you pass `--refresh`.
+
 ## [0.3.0] — 2026-07-25
 
 ### Added

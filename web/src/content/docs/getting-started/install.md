@@ -48,8 +48,10 @@ You do this **once**: from then on Zotero keeps the plugin updated itself (see
 [Updating](#updating)).
 
 :::caution[Unsigned plugin warning]
-Zotero will warn that the plugin is not signed / from an unknown source. That is
-expected for a self-built or self-distributed plugin — proceed. See the
+Zotero will warn that the plugin is not signed / from an unknown source — expected
+for a plugin distributed outside Zotero's directory. Proceed; the
+[security model](/zotero-agent/security/#distribution--updates) covers the trust
+chain (built in CI from the tag, updates verified by `sha256`). See the
 [FAQ](/zotero-agent/faq/) if the install is blocked.
 :::
 
@@ -66,9 +68,9 @@ A healthy `zot ping` looks like this:
 $ zot ping
 Zotero local API : up (HTTP 200)
 bridge endpoint  : up (/zotero-agent, 1+1 == 2)
-bridge plugin    : 0.2.1
+bridge plugin    : 0.3.0
 userID           : 2960998
-zot version      : 0.2.1
+zot version      : 0.3.0
 ```
 
 If the **bridge endpoint** shows `FAIL`, the plugin is not loaded — reinstall the
@@ -84,11 +86,34 @@ The CLI and the plugin ship together and share a version number.
 uv tool upgrade zotero-agent      # or: pipx upgrade zotero-agent
 ```
 
+If `zot --version` still shows the previous release, uv is using cached index
+metadata — force a refresh:
+
+```bash
+uv tool install --force --refresh --with mcp zotero-agent
+```
+
 **The plugin updates itself.** Its manifest points at an `update_url`
 (`updates.json` in the repo), so Zotero picks up new releases like it does for any
-other plugin — the manual XPI install happens exactly once. To force a check:
-*Tools → Plugins → gear → Check for Updates*. Then run `zot ping` to confirm both
-sides report the same version.
+other plugin — the manual XPI install happens exactly once.
+
+Zotero checks **once a day** (`extensions.update.interval` = 86400s), so straight
+after a release `zot ping` may still show the previous plugin version. To pull it
+in now:
+
+*Tools → Plugins → the **gear icon** (top-right of the Plugins window) → **Check
+for Updates***
+
+:::note
+That gear belongs to the plugin **list**, not to a plugin's detail pane — the
+detail pane only has "Allow automatic updates" (leave it on *Default*). If you are
+looking at Zotero Agent Bridge's details, go back first.
+:::
+
+Then run `zot ping`: `bridge plugin` and `zot version` should agree. If Zotero
+never offers the update, see the troubleshooting snippet in
+[`docs/install.md`](https://github.com/alex-roc/zotero-agent/blob/main/docs/install.md#updating),
+which asks Zotero's own AddonManager what it sees.
 
 ## 4. The agent skill (optional)
 
@@ -154,7 +179,6 @@ checks:
 
    ```bash
    uv tool uninstall zotero-agent          # or: pipx uninstall zotero-agent
-   brew uninstall zotero-agent
    rm ~/.local/bin/zot ~/.claude/skills/zotero   # the ./install.sh dev symlinks
    ```
 

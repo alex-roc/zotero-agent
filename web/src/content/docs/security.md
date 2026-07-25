@@ -59,6 +59,21 @@ the browser attack surface. Verified behavior:
 Zotero's HTTP server binds to loopback only by default, so the endpoint is not
 reachable from other machines. Do not change that binding.
 
+## Distribution & updates
+
+The plugin is not signed by Zotero (it is not in Zotero's plugin directory), so
+its trust chain is HTTPS plus the public repo:
+
+- The XPI is published **only** as a GitHub Release asset, built in CI from the
+  tagged source (`scripts/build_xpi.py`) as a deterministic zip — you can rebuild
+  a release from its tag and compare bytes.
+- Updates use Zotero's own plugin-update mechanism: the manifest's `update_url`
+  points at `updates.json` in the repo, which carries the release URL **and** the
+  asset's `sha256` (`update_hash`). Zotero refuses an update whose hash does not
+  match, so a file swapped at the download URL cannot be installed.
+- The bridge is ~200 lines of readable JS, and `zot ping` reports the running
+  plugin's version so you can see what is actually loaded.
+
 ## Residual risk & guidance
 
 - Anyone who can read your config file gets the token. It is `0600`, but treat

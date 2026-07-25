@@ -73,7 +73,6 @@ Per-client setup: [`docs/ai-agents.md`](docs/ai-agents.md) · [website](https://
 uv tool install zotero-agent            # recommended
 uv tool install "zotero-agent[mcp]"     # + the MCP server (zot mcp)
 pipx install "zotero-agent[mcp]"
-brew install alex-roc/tap/zotero-agent
 
 # 2) the bridge plugin in Zotero — download the XPI (this link is permanent):
 #    https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi
@@ -120,7 +119,7 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
 | **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` |
 | **Batch (undoable)** | `apply` `undo` `enrich` |
-| **Setup / escape** | `ping` `init` `skill` `plugin` `backup` `sync` `exec` `mcp` `completion` |
+| **Setup / escape** | `ping` `init` `skill` `backup` `sync` `exec` `mcp` `completion` |
 
 ### Batch edits are undoable
 

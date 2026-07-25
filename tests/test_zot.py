@@ -6,6 +6,7 @@ in-process Zotero server for the HTTP paths. Run from the repo root:
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -408,6 +409,29 @@ class TestAssets(unittest.TestCase):
         with redirect_stdout(buf):
             admin.cmd_skill(args)
         self.assertIn("zot", buf.getvalue())
+
+
+class TestReadmeCommandTable(unittest.TestCase):
+    """The README's "Commands at a glance" table must match the CLI in *both*
+    directions: a new command missing from it goes unadvertised, and a retired one
+    left in it advertises something that errors out."""
+
+    def test_table_matches_the_parser(self):
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        with open(os.path.join(root, "README.md"), encoding="utf-8") as fh:
+            readme = fh.read()
+        table = re.search(r"### Commands at a glance\n(.*?)(?=\n#{2,3} )", readme, re.S)
+        self.assertIsNotNone(table, "the 'Commands at a glance' table is gone")
+        listed = set(re.findall(r"`([a-z]+)`", table.group(1)))
+
+        parser = cli.build_parser()
+        sub = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"][0]
+        commands = set(sub.choices)
+        # The table also names `tag` subactions (add/rm/...); ignore anything that
+        # is not a top-level command, and require exact coverage of the rest.
+        self.assertEqual(commands - listed, set(), "commands missing from the README table")
+        self.assertEqual(listed - commands - {"add", "rm", "rename", "purge", "normalize"}, set(),
+                         "README table lists commands the CLI does not have")
 
 
 class TestVersionIsSingleSourced(unittest.TestCase):

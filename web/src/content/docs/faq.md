@@ -43,10 +43,17 @@ via *Tools → Plugins → gear → Install Plugin From File…*, confirm "Zoter
 Bridge" is enabled, and re-run `zot ping`. See
 [Install](/zotero-agent/getting-started/install/).
 
+## `zot ping` says the plugin is older than the CLI
+
+Expected right after a release: Zotero only checks for plugin updates **once every
+24 hours**. Force it with *Tools → Plugins → gear icon (top-right of the plugin
+list) → Check for Updates* — that menu is on the list, not in a plugin's detail
+pane. See [Updating](/zotero-agent/getting-started/install/#updating).
+
 ## "This add-on is unsigned / from an unknown source"
 
-Expected for a self-built or self-distributed plugin. Zotero warns but lets you
-proceed. The plugin is small (~200 lines) and its source is public — read it
+Expected for a plugin distributed outside Zotero's plugin directory. Zotero warns
+but lets you proceed. The plugin is small (~200 lines) and its source is public — read it
 before installing if you like. See the [security model](/zotero-agent/security/).
 
 ## Which paths does it use, per OS?

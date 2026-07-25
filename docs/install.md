@@ -13,12 +13,8 @@ uv tool install zotero-agent           # or: pipx install zotero-agent
 uv tool install "zotero-agent[mcp]"    # include the MCP server (zot mcp)
 ```
 
-The package also carries the agent surfaces, so no clone is needed for those:
-
-```bash
-zot skill install                 # the Claude Code skill -> ~/.claude/skills/zotero
-zot skill agents-md > AGENTS.md   # the portable agent instructions
-```
+The package also carries the agent surfaces (skill, `AGENTS.md`) — see
+[The agent skill](#the-agent-skill) below; no clone needed for those either.
 
 From a checkout (developer):
 
@@ -74,7 +70,9 @@ Contributors can build the same artifact from a checkout with
 the plugin, so a build is reproducible and never disagrees with the CLI).
 
 > Zotero will warn that the plugin is not signed / from an unknown source.
-> That is expected for a self-built plugin; proceed.
+> Expected: it is distributed outside Zotero's plugin directory. Proceed — see
+> [`security.md`](security.md#distribution--updates) for the trust chain (CI build
+> + `sha256`-verified updates).
 
 To confirm it loaded, check *Tools → Plugins* for "Zotero Agent Bridge", or just run
 `zot ping`.
@@ -92,9 +90,9 @@ precedence. See `security.md`.
 zot ping
 # Zotero local API : up (HTTP 200)
 # bridge endpoint  : up (/zotero-agent, 1+1 == 2)
-# bridge plugin    : 0.2.1
+# bridge plugin    : 0.3.0
 # userID           : 2960998
-# zot version      : 0.2.1
+# zot version      : 0.3.0
 ```
 
 If the endpoint is FAIL, the plugin is not loaded — reinstall the XPI via
@@ -110,15 +108,48 @@ The CLI and the plugin are released together and share a version number.
 uv tool upgrade zotero-agent      # the CLI (or: pipx upgrade zotero-agent)
 ```
 
+If `zot --version` still reports the old one, uv is serving cached index
+metadata — add `--refresh`:
+
+```bash
+uv tool install --force --refresh --with mcp zotero-agent
+```
+
 **The plugin updates itself.** Its manifest declares an `update_url` pointing at
 [`updates.json`](../updates.json) in this repo, so Zotero notices a new release
 and upgrades the plugin the way it does for any other plugin — you install the
-XPI by hand exactly once. To force a check: *Tools → Plugins → gear → Check for
-Updates*. Run `zot ping` afterwards to confirm both sides match.
+XPI by hand exactly once.
 
-If `ping` reports a plugin older than the CLI and Zotero is not offering the
-update, check that plugin auto-updates are enabled in Zotero, or reinstall the
-XPI from the link above.
+Zotero checks **once every 24 hours** (`extensions.update.interval`), so right
+after a release your plugin will still report the old version for a while. That
+is normal. To pull it in immediately:
+
+*Tools → Plugins → the **gear icon** (top-right of the Plugins window) → **Check
+for Updates***
+
+The gear menu belongs to the plugin *list*; it is not in a plugin's detail pane
+(where "Allow automatic updates" lives — leaving that on *Default* is correct).
+Then run `zot ping`: `bridge plugin` and `zot version` should match.
+
+If Zotero does not offer the update, ask it directly what it sees:
+
+```bash
+zot exec 'var {AddonManager} = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+var a = await AddonManager.getAddonByID("zotero-agent-bridge@zotero-agent");
+return await new Promise(function (resolve) {
+  var res = { installedVersion: a.version, updateFound: false };
+  a.findUpdates({
+    onUpdateAvailable: function (addon, i) { res.updateFound = true; res.offeredVersion = i.version; },
+    onNoUpdateAvailable: function () {},
+    onUpdateFinished: function (addon, status) { res.status = status; resolve(res); }
+  }, AddonManager.UPDATE_WHEN_USER_REQUESTED);
+});'
+```
+
+`status: 0` with an `offeredVersion` means the update path is healthy (this only
+queries; it installs nothing). If it reports no update, check `a.updateURL` and
+that `updates.json` on `main` announces the new version. Worst case, reinstall
+the XPI from the permanent link above.
 
 ## Shell completion (optional)
 
@@ -144,7 +175,6 @@ It completes subcommand names and the global flags; no extra dependency.
 
    ```bash
    uv tool uninstall zotero-agent          # or: pipx uninstall zotero-agent
-   brew uninstall zotero-agent
    rm ~/.local/bin/zot ~/.claude/skills/zotero   # the ./install.sh dev symlinks
    ```
 

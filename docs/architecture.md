@@ -69,6 +69,12 @@ body in-process and returns the result as JSON. This mirrors the well-known
 
 The canonical sources live once. The generated JS lives in `jslib` (not copied
 per command); the MCP tools call the same command functions the CLI does; the
-recipe book (`skill/references/recipes.md`) is linked, not restated. `install.sh`
-bundles only the built XPI into `skill/scripts/` so the skill can be shared
-self-contained; the CLI is installed from PyPI (or the dev shim `cli/zot`).
+recipe book (`skill/references/recipes.md`) is linked, not restated.
+
+Each surface has exactly one distribution route, and one version covers them all:
+the CLI, the MCP server and the skill ship in the **PyPI package** (`zot skill
+install` unpacks the skill; `cli/zot` is the dev shim), while the plugin XPI ships
+**only** as a GitHub Release asset. Zotero then keeps it current from
+`updates.json`, which the release workflow generates from the tag —
+`scripts/build_xpi.py` stamps the package version into the plugin, so a released
+XPI can never disagree with the CLI it answers, and `zot ping` reports both.
