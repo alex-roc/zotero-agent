@@ -64,7 +64,15 @@ bulk/destructive operations. The same operations are also available over MCP via
 
 ## Anti-duplication
 
-The canonical sources live once: the plugin in `plugin/`, the CLI in `src/`, the
-JS recipe book in `skill/references/recipes.md`. Packaging **copies** the CLI and
-plugin into the skill so it is self-contained when shared, and docs link to the
-recipe book rather than restating it.
+The canonical sources live once: the plugin in `plugin/`, the CLI in `src/`, the JS
+recipe book in `skill/references/recipes.md` — docs link to it rather than restating
+it. The MCP tools call the same command functions the CLI does, so the two surfaces
+cannot diverge.
+
+Distribution follows the same rule: **one route per surface, one version for all**.
+The CLI, the MCP server and the skill ship in the PyPI package (`zot skill install`
+unpacks the skill), while the plugin XPI is published **only** as a GitHub Release
+asset. Zotero keeps it current from `updates.json`, which the release workflow
+generates from the tag; the build stamps the package version into the plugin, so a
+released XPI can never disagree with the CLI it answers — and `zot ping` prints both
+versions. See [Install](/zotero-agent/getting-started/install/#updating).

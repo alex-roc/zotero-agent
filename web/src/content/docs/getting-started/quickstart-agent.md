@@ -33,8 +33,8 @@ version — most clients take the same shape:
 { "mcpServers": { "zotero-agent": { "command": "zot", "args": ["mcp"] } } }
 ```
 
-For **Claude Code**, the `zotero` skill is linked by `./install.sh` — just ask
-about your library, no MCP config needed. See
+For **Claude Code**, install the bundled skill with `zot skill install` — then just
+ask about your library, no MCP config needed. See
 [Claude Code](/zotero-agent/ai-agents/claude-code/).
 
 ## What you can ask

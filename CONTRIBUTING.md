@@ -37,6 +37,30 @@ run without Zotero. For a real end-to-end check against your own library, set
    plugin.
 4. Open a PR describing what changed and how you verified it.
 
+## Docs live in two places
+
+Three documents exist twice: plain Markdown under `docs/` (for the repo) and a
+Starlight page under `web/src/content/docs/` (for the site). They are **variants**,
+not copies — the web ones carry frontmatter, site-relative links and asides — so
+neither is generated from the other:
+
+| Fact | Repo | Website |
+|------|------|---------|
+| architecture | `docs/architecture.md` | `web/src/content/docs/architecture.md` |
+| security | `docs/security.md` | `web/src/content/docs/security.md` |
+| install | `docs/install.md` | `web/src/content/docs/getting-started/install.md` |
+
+`tests/test_doc_parity.py` keeps them honest: every fact listed there must appear
+in **both** copies, and retired wording (e.g. `zot plugin build`) must appear in
+neither. **When you document a new fact about installing, updating or security,
+add it to `SHARED_FACTS`** — that is what stops one copy from going stale, which
+has already happened once.
+
+The command reference is different: `docs/commands.md` and the site's
+`reference/commands.md` are both **generated** from the argparse tree by
+`scripts/gen_cli_reference.py`, and CI fails if they drift. Never edit them by
+hand.
+
 ## Cutting a release
 
 One version number covers the CLI *and* the plugin, and Zotero's auto-update
