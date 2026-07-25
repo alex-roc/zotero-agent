@@ -18,8 +18,9 @@ os.environ["ZOTERO_AGENT_NO_AUDIT"] = "1"  # don't touch ~/.local/state during t
 
 from fake_zotero import FakeZotero  # noqa: E402
 
-from zotero_agent import audit, cli, http, jslib, resolve  # noqa: E402
-from zotero_agent.commands import features, read, write  # noqa: E402
+from zotero_agent import assets, audit, cli, http, jslib, resolve  # noqa: E402
+from zotero_agent.commands import admin, features, read, write  # noqa: E402
+from zotero_agent.constants import VERSION  # noqa: E402
 from zotero_agent.term import ZotError, set_verbosity  # noqa: E402
 
 set_verbosity(quiet=True)
@@ -336,6 +337,148 @@ class TestAuditLog(unittest.TestCase):
                 audit.record("undo", "it.fromJSON({});", {"ok": True, "result": {"restored": 1}})
             self.assertTrue(os.path.exists(apath))
             self.assertTrue(os.path.exists(apath + ".1"))
+
+
+class TestAssets(unittest.TestCase):
+    """The skill/plugin assets must be reachable and installable — this is what a
+    `uv tool install` user gets, so a packaging regression has to fail here."""
+
+    def test_asset_paths_resolve(self):
+        self.assertTrue(os.path.isdir(assets.asset_path("skill")))
+        self.assertTrue(os.path.isfile(assets.asset_path("agents-md")))
+        self.assertTrue(os.path.isfile(os.path.join(assets.asset_path("skill"), "SKILL.md")))
+
+    def test_the_package_does_not_ship_the_plugin(self):
+        """The XPI has exactly one distribution channel (the release asset), so
+        no plugin source may sneak into the installable package."""
+        self.assertEqual(set(assets._ASSETS), {"skill", "agents-md"})
+        self.assertFalse(hasattr(assets, "build_xpi"))
+
+    def test_install_skill_copies_the_skill(self):
+        tmp = tempfile.mkdtemp()
+        dest = os.path.join(tmp, "skills", "zotero")
+        got = assets.install_skill(dest)
+        self.assertEqual(got, dest)
+        self.assertTrue(os.path.isfile(os.path.join(dest, "SKILL.md")))
+        self.assertTrue(os.path.isfile(os.path.join(dest, "references", "recipes.md")))
+        self.assertFalse(os.path.exists(os.path.join(dest, "scripts")))
+
+    def test_install_skill_refuses_to_clobber_without_force(self):
+        tmp = tempfile.mkdtemp()
+        dest = os.path.join(tmp, "zotero")
+        assets.install_skill(dest)
+        with self.assertRaises(ZotError):
+            assets.install_skill(dest)
+        assets.install_skill(dest, force=True)  # force replaces it
+        self.assertTrue(os.path.isfile(os.path.join(dest, "SKILL.md")))
+
+    def test_skill_install_dest_honours_project_flag(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["skill", "install", "--project"])
+        self.assertEqual(admin._skill_dest(args),
+                         os.path.join(os.getcwd(), ".claude", "skills", "zotero"))
+        args = parser.parse_args(["skill", "install"])
+        self.assertEqual(admin._skill_dest(args),
+                         os.path.expanduser("~/.claude/skills/zotero"))
+        args = parser.parse_args(["skill", "install", "--dest", "/tmp/x"])
+        self.assertEqual(admin._skill_dest(args), "/tmp/x")
+
+    def test_wheel_force_include_covers_every_skill_file(self):
+        """Packaging guard: a new file under skill/ must be added to the wheel's
+        force-include list, or PyPI users silently get an incomplete skill."""
+        import re
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        with open(os.path.join(root, "pyproject.toml"), encoding="utf-8") as fh:
+            toml = fh.read()
+        block = re.search(r"\[tool\.hatch\.build\.targets\.wheel\.force-include\]\n(.*?)(?=\n\[|\Z)",
+                          toml, re.S).group(1)
+        declared = set(re.findall(r'^"([^"]+)"\s*=', block, re.M))
+        skill_root = os.path.join(root, "skill")
+        for dirpath, dirnames, filenames in os.walk(skill_root):
+            dirnames[:] = [d for d in dirnames if d not in ("scripts", "evals", "__pycache__")]
+            for name in filenames:
+                rel = os.path.relpath(os.path.join(dirpath, name), root).replace(os.sep, "/")
+                covered = any(rel == d or rel.startswith(d + "/") for d in declared)
+                self.assertTrue(covered, "%s is not in the wheel's force-include list" % rel)
+
+    def test_skill_agents_md_goes_to_stdout(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["skill", "agents-md"])
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            admin.cmd_skill(args)
+        self.assertIn("zot", buf.getvalue())
+
+
+class TestVersionIsSingleSourced(unittest.TestCase):
+    """The CLI, the plugin and the auto-update manifest are released together and
+    must all announce the same version — otherwise Zotero either never offers the
+    update, or offers one that disagrees with the installed CLI."""
+
+    _ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+
+    def _read(self, *parts):
+        with open(os.path.join(self._ROOT, *parts), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_plugin_manifest_matches_the_package(self):
+        manifest = json.loads(self._read("plugin", "zotero-agent-bridge", "manifest.json"))
+        self.assertEqual(manifest["version"], VERSION)
+
+    def test_bootstrap_matches_the_package(self):
+        import re
+        found = re.search(r'\n\s*version:\s*"([^"]+)"', self._read("plugin", "zotero-agent-bridge", "bootstrap.js"))
+        self.assertIsNotNone(found, "BRIDGE.version not found in bootstrap.js")
+        self.assertEqual(found.group(1), VERSION)
+
+    def test_updates_json_announces_the_current_version(self):
+        updates = json.loads(self._read("updates.json"))
+        entry = updates["addons"]["zotero-agent-bridge@zotero-agent"]["updates"][0]
+        self.assertEqual(entry["version"], VERSION)
+        self.assertIn("/releases/download/v%s/" % VERSION, entry["update_link"])
+        self.assertTrue(entry["update_link"].endswith("zotero-agent-bridge-%s.xpi" % VERSION))
+
+    def test_manifest_update_url_matches_the_generator(self):
+        """Both must name the same file, or the plugin polls a manifest nobody writes."""
+        manifest = json.loads(self._read("plugin", "zotero-agent-bridge", "manifest.json"))
+        self.assertTrue(manifest["applications"]["zotero"]["update_url"].endswith("/updates.json"))
+
+
+class TestPluginVersionReporting(unittest.TestCase):
+    def test_matching_version_is_reported_plainly(self):
+        self.assertEqual(admin._plugin_status(VERSION), VERSION)
+
+    def test_missing_version_means_an_old_plugin(self):
+        self.assertIn("unknown", admin._plugin_status(None))
+
+    def test_older_and_newer_plugins_get_the_right_advice(self):
+        with mock.patch.object(admin, "VERSION", "0.9.0"):
+            # 0.10.0 > 0.9.0 numerically; a string comparison would call it older.
+            self.assertIn("newer than this CLI", admin._plugin_status("0.10.0"))
+            self.assertIn("older than this CLI", admin._plugin_status("0.8.9"))
+            self.assertIn("Check for Updates", admin._plugin_status("0.8.9"))
+        with mock.patch.object(admin, "VERSION", "0.10.0"):
+            self.assertIn("older than this CLI", admin._plugin_status("0.9.0"))
+        with mock.patch.object(admin, "VERSION", "0.2.1"):
+            self.assertIn("uv tool upgrade", admin._plugin_status("0.3.0"))
+
+    def test_version_tuple_is_numeric_and_tolerates_suffixes(self):
+        self.assertGreater(admin._version_tuple("0.10.0"), admin._version_tuple("0.9.9"))
+        self.assertEqual(admin._version_tuple("0.3.0rc1"), (0, 3, 0))
+
+    def test_ping_prints_the_plugin_version(self):
+        with FakeZotero() as srv:
+            cfg = {"base": srv.base, "token": "t", "userID": 1}
+            with mock.patch.object(admin, "post_code",
+                                   return_value={"ok": True, "result": 2, "version": "9.9.9"}), \
+                 mock.patch("zotero_agent.config.require_config", return_value=cfg):
+                buf = io.StringIO()
+                with redirect_stdout(buf), self.assertRaises(SystemExit) as exit_ctx:
+                    admin.cmd_ping(_args())
+        self.assertEqual(exit_ctx.exception.code, 0)
+        out = buf.getvalue()
+        self.assertIn("bridge plugin", out)
+        self.assertIn("9.9.9", out)
 
 
 if __name__ == "__main__":

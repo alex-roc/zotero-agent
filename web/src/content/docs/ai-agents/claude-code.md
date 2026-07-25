@@ -7,10 +7,18 @@ There are two ways to use `zotero-agent` from Claude Code.
 
 ## Option A — the skill (recommended)
 
-From a git checkout, `./install.sh` links the `zotero` skill into
-`~/.claude/skills/`. After that, just ask Claude about your library — no MCP
-config needed. The skill teaches Claude the safe workflow (backup → sync-off →
-dry-run → small batch) and points it at the right `zot` commands.
+The skill ships inside the package — install it with the CLI:
+
+```bash
+zot skill install               # -> ~/.claude/skills/zotero (all projects)
+zot skill install --project     # -> ./.claude/skills/zotero (this project only)
+```
+
+Start a **new** session, then just ask Claude about your library — no MCP config
+needed. The skill teaches Claude the safe workflow (backup → sync-off → dry-run →
+small batch) and points it at the right `zot` commands. From a git checkout,
+`./install.sh` does the same with `--link`, so the installed skill tracks your
+edits to `skill/`.
 
 > "Which items in my *To Read* collection are missing a DOI? Fill them in from
 > Crossref, dry-run first."
@@ -33,5 +41,5 @@ tool list and safety notes.
 ## Which should I use?
 
 The skill is the smoother path in Claude Code: it carries the safety workflow and
-recipe knowledge with it. Use MCP if you want the exact same structured tools
-across several clients, or if you're not working from a checkout.
+recipe knowledge with it, and `zot skill install` is all it takes. Use MCP if you
+want the exact same structured tools across several clients.

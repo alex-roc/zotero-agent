@@ -1,6 +1,6 @@
 # Command reference
 
-_Auto-generated from the `zot` CLI (v0.2.1) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.3.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 
@@ -386,6 +386,23 @@ zot ping [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 zot init [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
                 [--debug] [-y] [--json]
 ```
+
+### `zot skill`
+
+```
+zot skill [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+                 [--debug] [-y] [--json] [--dest DEST] [--project] [--force]
+                 [--link]
+                 {install,path,agents-md}
+```
+
+| Argument | Description |
+|----------|-------------|
+| `action` | install it, print the bundled source path, or print AGENTS.md to stdout |
+| `--dest` | install here (default: ~/.claude/skills/zotero) |
+| `--project` | install into ./.claude/skills/zotero (this project only) |
+| `--force` | replace an existing install |
+| `--link` | symlink the source instead of copying (dev checkout) |
 
 ### `zot backup`
 

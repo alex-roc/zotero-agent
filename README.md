@@ -56,9 +56,9 @@ Anything that speaks **MCP** or can **run a shell command** can drive your libra
 
 | Tool | How |
 |------|-----|
-| **Claude Code** | the bundled `zotero` skill, or `claude mcp add zotero-agent -- zot mcp` |
+| **Claude Code** | `zot skill install` (bundled skill), or `claude mcp add zotero-agent -- zot mcp` |
 | **Claude Desktop** | add `zot mcp` to `claude_desktop_config.json` |
-| **Codex CLI** | `~/.codex/config.toml` MCP entry, or it reads `AGENTS.md` and calls `zot` |
+| **Codex CLI** | `~/.codex/config.toml` MCP entry, or `zot skill agents-md > AGENTS.md` and it calls `zot` |
 | **Gemini CLI** | `~/.gemini/settings.json` MCP entry |
 | **Cursor** | `.cursor/mcp.json` MCP entry |
 | **OpenCode / Windsurf / any MCP client** | generic stdio server: `command: "zot", args: ["mcp"]` |
@@ -75,14 +75,21 @@ uv tool install "zotero-agent[mcp]"     # + the MCP server (zot mcp)
 pipx install "zotero-agent[mcp]"
 brew install alex-roc/tap/zotero-agent
 
-# 2) the bridge plugin in Zotero (one-click, no restart):
-#    Tools → Plugins → gear → "Install Plugin From File" → the .xpi from Releases:
-#    https://github.com/alex-roc/zotero-agent/releases/latest
+# 2) the bridge plugin in Zotero — download the XPI (this link is permanent):
+#    https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi
+#    Tools → Plugins → gear → "Install Plugin From File" → that .xpi
+#    One-click, no restart. Zotero auto-updates it from then on.
 
 # 3) wire it up
 zot init      # generates a token, writes config, auto-detects your userID
-zot ping      # local API up? bridge answering? userID known?
+zot ping      # local API up? bridge answering? plugin version? userID known?
+
+# 4) optional: the Claude Code skill (bundled in the package)
+zot skill install           # → ~/.claude/skills/zotero  (--project for one repo)
 ```
+
+Updating: `uv tool upgrade zotero-agent` for the CLI; the plugin updates itself
+(Zotero polls the release manifest), and `zot ping` shows both versions.
 
 Requires **Zotero 7+** (tested through 9.x) running with the local API enabled
 (the default), and **Python 3.9+**. Full guide: [`docs/install.md`](docs/install.md).
@@ -113,7 +120,7 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
 | **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` |
 | **Batch (undoable)** | `apply` `undo` `enrich` |
-| **Setup / escape** | `ping` `init` `backup` `sync` `exec` `mcp` `completion` |
+| **Setup / escape** | `ping` `init` `skill` `plugin` `backup` `sync` `exec` `mcp` `completion` |
 
 ### Batch edits are undoable
 
@@ -160,7 +167,7 @@ installing. Report issues privately via [`SECURITY.md`](SECURITY.md).
 
 ```bash
 git clone https://github.com/alex-roc/zotero-agent.git && cd zotero-agent
-./install.sh                            # dev shim on PATH + skill + XPI + zot init
+./install.sh                            # dev shim on PATH + skill (symlinked) + XPI + zot init
 python3 -m unittest discover -s tests   # tests: fake Zotero server, no network
 uvx ruff check src tests cli/zot scripts
 uv build                                # wheel + sdist

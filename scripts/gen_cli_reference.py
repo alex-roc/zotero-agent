@@ -32,7 +32,8 @@ SECTIONS = [
                          "annotations", "related", "notes", "lint"]),
     ("Edit & organize", ["add", "dedupe", "tag", "set", "move", "collection", "note"]),
     ("Batch (undoable)", ["apply", "undo", "enrich"]),
-    ("Setup & escape hatch", ["ping", "init", "backup", "sync", "exec", "mcp", "completion"]),
+    ("Setup & escape hatch", ["ping", "init", "skill", "backup", "sync",
+                              "exec", "mcp", "completion"]),
 ]
 
 

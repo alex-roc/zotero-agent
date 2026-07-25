@@ -18,7 +18,7 @@ if (typeof Zotero == "undefined") {
 }
 
 var BRIDGE = {
-  version: "0.2.1",
+  version: "0.3.0",
   endpointPath: "/zotero-agent",
   tokenPref: "extensions.zotero-agent.token",
   tokenHeader: "X-Zotero-Agent-Token",

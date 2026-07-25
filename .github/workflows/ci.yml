@@ -59,6 +59,10 @@ jobs:
       - name: Verify the XPI is a valid zip with a manifest
         run: |
           unzip -l dist/zotero-agent-bridge.xpi | grep -q manifest.json
+      - name: Verify updates.json announces this version
+        # Catches a version bump that forgot the auto-update manifest, which
+        # would silently freeze every installed plugin.
+        run: python3 scripts/gen_updates_json.py --check
       - uses: actions/upload-artifact@v4
         with:
           name: zotero-agent-bridge-xpi

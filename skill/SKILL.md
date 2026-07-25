@@ -24,8 +24,10 @@ You control a running Zotero instance through **`zot`**, a stdlib-only Python CL
   (Zotero's HTTP API is read-only by design; see `references/setup.md`).
 
 `zot` is on `PATH` after install (`uv tool install zotero-agent`, or the repo's
-`install.sh`). The bundled `scripts/zotero-agent-bridge.xpi` is the plugin to
-install in Zotero if the bridge endpoint is not answering.
+`install.sh`). If the bridge endpoint is not answering, the user must install the
+plugin XPI in Zotero — it is published only here (permanent link):
+`https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi`
+→ *Tools → Plugins → gear → "Install Plugin From File…"*. Do not try to build it.
 
 ## First: confirm the setup is live
 

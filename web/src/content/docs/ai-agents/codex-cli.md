@@ -21,8 +21,15 @@ with `zot ping`.
 ## Via the CLI + AGENTS.md
 
 Codex also reads a repository's `AGENTS.md`, so inside a project you can skip MCP
-entirely and let it call the `zot` CLI directly. The repo root ships an
-[`AGENTS.md`](https://github.com/alex-roc/zotero-agent/blob/main/AGENTS.md) that
+entirely and let it call the `zot` CLI directly. The instructions ship with the
+package — write them into any repo:
+
+```bash
+zot skill agents-md > AGENTS.md    # or  >>  to append to an existing one
+```
+
+That file (also on
+[GitHub](https://github.com/alex-roc/zotero-agent/blob/main/AGENTS.md))
 documents the read commands, the guarded write commands, the JSONL batch-edit
 flow (`zot apply` / `zot undo`), and the safety rules — everything Codex needs to
 operate the library from the shell.

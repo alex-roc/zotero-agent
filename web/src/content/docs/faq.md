@@ -37,9 +37,11 @@ local API down:
 
 ## The bridge endpoint shows `FAIL`
 
-The plugin isn't loaded. Reinstall the `.xpi` via *Tools → Plugins → gear →
-Install Plugin From File…*, confirm "Zotero Agent Bridge" is enabled, and re-run
-`zot ping`. See [Install](/zotero-agent/getting-started/install/).
+The plugin isn't loaded. Reinstall
+[the XPI](https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi)
+via *Tools → Plugins → gear → Install Plugin From File…*, confirm "Zotero Agent
+Bridge" is enabled, and re-run `zot ping`. See
+[Install](/zotero-agent/getting-started/install/).
 
 ## "This add-on is unsigned / from an unknown source"
 

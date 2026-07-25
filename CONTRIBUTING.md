@@ -37,6 +37,29 @@ run without Zotero. For a real end-to-end check against your own library, set
    plugin.
 4. Open a PR describing what changed and how you verified it.
 
+## Cutting a release
+
+One version number covers the CLI *and* the plugin, and Zotero's auto-update
+depends on `updates.json` announcing it, so bump them together:
+
+```bash
+# 1. bump the single source of truth
+$EDITOR src/zotero_agent/__init__.py           # __version__ = "X.Y.Z"
+# 2. keep the plugin's declared version in step (a test enforces this)
+$EDITOR plugin/zotero-agent-bridge/manifest.json   # "version"
+$EDITOR plugin/zotero-agent-bridge/bootstrap.js    # BRIDGE.version
+# 3. point the auto-update manifest at the new tag
+python scripts/gen_updates_json.py
+# 4. move CHANGELOG's [Unreleased] into the new version, then
+python -m unittest discover -s tests && python scripts/gen_cli_reference.py
+git commit -am "release: X.Y.Z" && git tag vX.Y.Z && git push --follow-tags
+```
+
+The tag triggers `.github/workflows/release.yml`, which builds the wheel + the
+XPI, publishes the GitHub Release (versioned **and** stable asset names),
+publishes to PyPI, and re-commits `updates.json` with the released XPI's
+`update_hash`. CI fails if `updates.json` lags the package version.
+
 ## Reporting bugs / requesting features
 
 Use the issue templates. For bugs, include the output of `zot ping` and

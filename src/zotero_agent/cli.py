@@ -179,6 +179,16 @@ def build_parser():
     sp = add("completion", admin.cmd_completion, "print a shell completion script (bash/zsh/fish)")
     sp.add_argument("shell", choices=["bash", "zsh", "fish"])
 
+    sp = add("skill", admin.cmd_skill, "install the bundled agent skill (Claude Code), or print AGENTS.md")
+    sp.add_argument("action", choices=["install", "path", "agents-md"],
+                    help="install it, print the bundled source path, or print AGENTS.md to stdout")
+    sp.add_argument("--dest", help="install here (default: ~/.claude/skills/zotero)")
+    sp.add_argument("--project", action="store_true",
+                    help="install into ./.claude/skills/zotero (this project only)")
+    sp.add_argument("--force", action="store_true", help="replace an existing install")
+    sp.add_argument("--link", action="store_true",
+                    help="symlink the source instead of copying (dev checkout)")
+
     return p
 
 

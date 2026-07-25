@@ -20,8 +20,16 @@ want to expose the raw `run_javascript` tool.
 
 ## Claude Code (skill)
 
-`./install.sh` links the `zotero` skill into `~/.claude/skills/`. Just ask Claude
-about your library — no MCP config needed. To use MCP instead:
+The skill is bundled in the package:
+
+```bash
+zot skill install              # -> ~/.claude/skills/zotero
+zot skill install --project    # -> ./.claude/skills/zotero (this project only)
+```
+
+Start a new session and just ask Claude about your library — no MCP config
+needed. (From a checkout, `./install.sh` runs `zot skill install --link` so the
+installed skill tracks your edits.) To use MCP instead:
 `claude mcp add zotero-agent -- zot mcp`.
 
 ## Claude Desktop
@@ -47,7 +55,9 @@ args = ["mcp"]
 ```
 
 Codex also reads a repository's `AGENTS.md`, so in a project you can skip MCP and
-let it call the `zot` CLI directly (see `AGENTS.md` at the repo root).
+let it call the `zot` CLI directly. Drop the bundled instructions into any repo
+with `zot skill agents-md > AGENTS.md` (append to an existing one instead of
+overwriting it).
 
 ## Gemini CLI
 
@@ -93,7 +103,8 @@ Windsurf and other MCP-capable editors use the same `command: "zot", args:
 
 Any agent that can run a shell command can drive your library through the `zot`
 CLI directly — no MCP required. Point it at [`AGENTS.md`](../AGENTS.md) (repo
-root): it lists the read/write/batch commands and the safety rules, using
+root, or `zot skill agents-md` from any install): it lists the
+read/write/batch commands and the safety rules, using
 `--json` for machine-readable output and `zot apply`/`zot undo` for undoable
 batch edits. This is the path for local-model runners and bespoke agent loops.
 

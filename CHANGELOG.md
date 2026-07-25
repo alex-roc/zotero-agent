@@ -6,6 +6,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-25
+
+### Added
+- **The agent skill now ships inside the package**, so `uv tool install
+  zotero-agent` delivers it too — no clone needed:
+  - **`zot skill install`** copies the skill to `~/.claude/skills/zotero`
+    (`--project` for `./.claude/skills/`, plus `--dest`, `--force`, `--link`).
+  - **`zot skill path`** prints where the bundled copy lives;
+    **`zot skill agents-md`** writes the portable `AGENTS.md` to stdout.
+- **`zot ping` now reports the installed plugin's version** and, when it differs
+  from the CLI, which side to update. The bridge already returned its version;
+  nothing surfaced it.
+- **One route for the plugin XPI**: every release publishes a stable asset name,
+  so <https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi>
+  is a permanent link — used by the docs, the skill and `zot init`'s error path.
+- **Docs now explain updating** (`docs/install.md`, website): `uv tool upgrade`
+  for the CLI, and Zotero's own auto-update for the plugin.
+
+### Fixed
+- **Releases no longer freeze plugin auto-update.** `updates.json` — the manifest
+  Zotero polls — was maintained by hand, so a new release would ship without
+  announcing itself and installed plugins would silently stay put. The release
+  workflow now regenerates it from the tag (with the released XPI's
+  `update_hash`) and commits it, and CI fails if it lags the package version
+  (`scripts/gen_updates_json.py --check`).
+- **The version can no longer drift between the CLI, the plugin manifest and
+  `bootstrap.js`.** The XPI build stamps the package version into both plugin
+  files, and a test fails if the checked-in copies disagree.
+
+### Changed
+- The XPI build moved out of the package into `scripts/build_xpi.py` (a
+  maintainer tool used by `plugin/build.sh` and CI) and produces a deterministic
+  zip. The package ships no plugin source: the XPI has exactly one distribution
+  channel, the release asset.
+- `install.sh` now calls `zot skill install --link` instead of hand-rolling the
+  symlink, and no longer bundles an XPI into `skill/scripts/`.
+- `docs/install.md`'s uninstall section now covers every install method and both
+  state directories (`~/.config/zotero-agent`, `~/.local/state/zotero-agent`).
+
 ## [0.2.1] — 2026-07-24
 
 ### Added
@@ -65,7 +104,8 @@ Single-user project, no back-compat shim: reinstall the bridge XPI and run
 - Initial release as `zotero-cli-skill`: `zotexec` plugin + `zot` CLI + Claude
   Code skill.
 
-[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/alex-roc/zotero-agent/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/alex-roc/zotero-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/alex-roc/zotero-agent/releases/tag/v0.2.0
 [0.1.0]: https://github.com/alex-roc/zotero-agent/releases/tag/v0.1.0

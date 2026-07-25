@@ -21,21 +21,49 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - name: Build wheel + sdist (into dist/)
         run: uv build
 
       - name: Build the bridge XPI (into release-assets/, keeping dist/ PyPI-only)
+        # Two names for one file: the versioned asset (what updates.json points
+        # at, immutable) and a stable one, so
+        # /releases/latest/download/zotero-agent-bridge.xpi never breaks.
         run: |
           bash plugin/build.sh
           mkdir -p release-assets
           mv dist/zotero-agent-bridge-*.xpi release-assets/
           rm -f dist/zotero-agent-bridge.xpi   # drop the symlink so dist/ is PyPI-only
+          cp release-assets/zotero-agent-bridge-*.xpi release-assets/zotero-agent-bridge.xpi
 
       - name: Create GitHub Release with the XPI
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/zotero-agent-bridge-*.xpi
+          files: release-assets/*.xpi
           generate_release_notes: true
+
+      - name: Point updates.json at this release (Zotero auto-update)
+        # The installed plugin polls updates.json on main; if it is not bumped
+        # here, nobody ever receives the update.
+        run: |
+          XPI="$(ls release-assets/zotero-agent-bridge-*.xpi)"
+          # Generate while still on the tag, so the version comes from the tagged
+          # commit even if main has moved on; then carry the file over to main.
+          python3 scripts/gen_updates_json.py --xpi "$XPI"
+          cp updates.json "$RUNNER_TEMP/updates.json"
+          git fetch origin main
+          git checkout -B main origin/main
+          cp "$RUNNER_TEMP/updates.json" updates.json
+          if git diff --quiet -- updates.json; then
+            echo "updates.json already current"
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "release: announce ${GITHUB_REF_NAME} in updates.json" -- updates.json
+            git push origin main
+          fi
 
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1

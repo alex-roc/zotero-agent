@@ -17,6 +17,11 @@ STATE_DIR = os.path.expanduser("~/.local/state/zotero-agent")
 
 DEFAULT_BASE = "http://localhost:23119"
 
+# The bridge plugin has exactly one distribution channel: the GitHub Release
+# asset. Zotero then auto-updates it from updates.json, so this URL is the only
+# one users ever need — it always resolves to the newest XPI.
+XPI_URL = "https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi"
+
 VERSION = __version__
 
 # Exit codes (documented; kept < 126 to avoid shell conflicts).

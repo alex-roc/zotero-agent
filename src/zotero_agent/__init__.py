@@ -7,4 +7,4 @@ Stdlib only in the core (urllib) — no runtime dependencies. The optional MCP
 server (`zot mcp`) needs the `[mcp]` extra.
 """
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"

@@ -48,6 +48,23 @@ path = "src/zotero_agent/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zotero_agent"]
+# One install must deliver all four surfaces (CLI, MCP, skill, AGENTS.md), so the
+# non-Python assets ride along in the wheel; `zot skill install` / `zot plugin
+# build` unpack them. See src/zotero_agent/assets.py.
+
+# The skill and AGENTS.md ride along so `zot skill install` works from PyPI. The
+# plugin does not: the XPI ships only as a GitHub Release asset. Listed
+# file-by-file because force-include is not subject to `exclude`, so a
+# whole-directory include would also ship local artifacts; tests/test_zot.py
+# asserts this list still covers every skill file.
+[tool.hatch.build.targets.wheel.force-include]
+"skill/SKILL.md" = "zotero_agent/_assets/skill/SKILL.md"
+"skill/references" = "zotero_agent/_assets/skill/references"
+"AGENTS.md" = "zotero_agent/_assets/AGENTS.md"
+
+[tool.hatch.build.targets.sdist]
+# The sdist is a source mirror; keep the build inputs, drop local artifacts.
+exclude = ["/dist", "/web/node_modules", "/web/dist", "/zotero-workspace", "/skill/scripts", "/marketing"]
 
 [tool.ruff]
 line-length = 120

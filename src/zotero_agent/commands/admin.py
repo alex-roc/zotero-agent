@@ -16,6 +16,7 @@ from ..constants import (
     EXIT_CONN,
     EXIT_GENERIC,
     VERSION,
+    XPI_URL,
 )
 from ..http import http_get, post_code, run_js
 from ..jslib import DRYRUN_PREAMBLE, WRITE_RE
@@ -47,12 +48,50 @@ def cmd_ping(args):
     env = post_code(cfg, "return 1 + 1;")
     if env.get("ok") and env.get("result") == 2:
         print("bridge endpoint  : up (%s, 1+1 == 2)" % ENDPOINT_PATH)
+        print("bridge plugin    : %s" % _plugin_status(env.get("version")))
     else:
         print("bridge endpoint  : FAIL (%s)" % (env.get("error") or env))
         ok = False
     print("userID           : %s" % (cfg.get("userID") or "UNKNOWN"))
     print("zot version      : %s" % VERSION)
     sys.exit(0 if ok else 1)
+
+
+def _plugin_status(plugin_version):
+    """Describe the installed plugin relative to this CLI.
+
+    The plugin and the CLI are released together and share a version, so a
+    mismatch means one of the two was not updated — worth surfacing, since
+    `zot ping` is where people look when something behaves oddly.
+    """
+    if not plugin_version:
+        return ("unknown (plugin predates 0.2.1) — update it: Tools -> Plugins "
+                "-> gear -> Check for Updates")
+    if plugin_version == VERSION:
+        return plugin_version
+    mine, theirs = _version_tuple(VERSION), _version_tuple(plugin_version)
+    if theirs < mine:
+        return ("%s — older than this CLI (%s); Zotero auto-updates it, or force "
+                "it now: Tools -> Plugins -> gear -> Check for Updates"
+                % (plugin_version, VERSION))
+    if theirs > mine:
+        return ("%s — newer than this CLI (%s); upgrade it: uv tool upgrade zotero-agent"
+                % (plugin_version, VERSION))
+    return "%s (CLI reports %s)" % (plugin_version, VERSION)
+
+
+def _version_tuple(version):
+    """(1, 10, 0) from '1.10.0' — numeric, so 0.10 sorts above 0.9. Any
+    non-numeric suffix (rc1, dev) is ignored rather than guessed at."""
+    parts = []
+    for chunk in str(version).split("."):
+        digits = ""
+        for ch in chunk:
+            if not ch.isdigit():
+                break
+            digits += ch
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
 
 
 def cmd_exec(args):
@@ -180,8 +219,39 @@ def cmd_init(args):
     else:
         print("\nCould not reach the zotero-agent bridge yet:")
         print("  %s" % (env.get("error") or env))
-        print("\nInstall the plugin and restart Zotero (see docs/install.md),")
-        print("then re-run `zot init` to auto-detect your userID.")
+        print("\nInstall the plugin in Zotero — download the XPI:")
+        print("  %s" % XPI_URL)
+        print("then Tools -> Plugins -> gear -> \"Install Plugin From File...\"")
+        print("(no restart needed). Re-run `zot init` to auto-detect your userID.")
+
+
+# --------------------------------------------------------------------------- #
+# bundled assets: the agent skill and the bridge plugin
+# --------------------------------------------------------------------------- #
+def _skill_dest(args):
+    if args.dest:
+        return args.dest
+    root = os.path.join(os.getcwd(), ".claude", "skills") if args.project \
+        else os.path.expanduser("~/.claude/skills")
+    return os.path.join(root, "zotero")
+
+
+def cmd_skill(args):
+    """Install (or locate) the bundled agent skill; print the portable AGENTS.md."""
+    from .. import assets
+    if args.action == "path":
+        print(assets.asset_path("skill"))
+        return
+    if args.action == "agents-md":
+        with open(assets.asset_path("agents-md"), encoding="utf-8") as fh:
+            sys.stdout.write(fh.read())
+        return
+
+    dest = assets.install_skill(_skill_dest(args), force=args.force, link=args.link)
+    print("Installed skill  : %s%s" % (dest, " (symlink)" if args.link else ""))
+    print("\nNext: start a new Claude Code session and ask about your library.")
+    print("Check the bridge first with `zot ping`; if it is down, install the")
+    print("plugin XPI from %s" % XPI_URL)
 
 
 # --------------------------------------------------------------------------- #

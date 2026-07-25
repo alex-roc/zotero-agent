@@ -10,11 +10,24 @@ This skill needs two things live:
 
 Verify with `zot ping`.
 
-Full installation instructions — installing the plugin, generating the token,
-writing config, per-OS paths, restarting Zotero — live in the repo's
-**`docs/install.md`**. Security model: **`docs/security.md`**. Why the write
-path is a plugin at all: **`docs/architecture.md`**.
+The plugin XPI is distributed in exactly one place — the latest GitHub Release,
+via this permanent link:
+
+```
+https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi
+```
+
+Installing it: *Tools → Plugins → gear icon → "Install Plugin From File…"* → pick
+that file. No restart needed; Zotero auto-updates it afterwards. There is no
+build step and no other source — never offer to build or fetch it another way.
+
+Full installation instructions — token, config, per-OS paths, updating — live in
+the repo's **`docs/install.md`** (or the website's Install page). Security model:
+**`docs/security.md`**. Why the write path is a plugin at all:
+**`docs/architecture.md`**.
 
 If `zot ping` reports the bridge endpoint as FAIL, the plugin is not loaded —
-send the user to `docs/install.md`; do not attempt writes via the read API
+point the user at the link above; do not attempt writes via the read API
 (it is read-only and will return `400 "Endpoint does not support method"`).
+`zot ping` also prints the installed plugin's version: if it is older than the
+CLI, tell the user to run *Tools → Plugins → gear → Check for Updates*.
