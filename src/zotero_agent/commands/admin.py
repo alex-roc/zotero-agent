@@ -15,6 +15,8 @@ from ..constants import (
     ENDPOINT_PATH,
     EXIT_CONN,
     EXIT_GENERIC,
+    IS_DEV_TREE,
+    SOURCE_DIR,
     VERSION,
     XPI_URL,
 )
@@ -54,6 +56,11 @@ def cmd_ping(args):
         ok = False
     print("userID           : %s" % (cfg.get("userID") or "UNKNOWN"))
     print("zot version      : %s" % VERSION)
+    # Which install answered. Two copies of the same version (an editable one and a
+    # released one, or brew's and uv's) are otherwise indistinguishable here — and
+    # this is the output people paste into bug reports. `~` keeps the username out.
+    print("zot source       : %s%s" % (SOURCE_DIR.replace(os.path.expanduser("~"), "~", 1),
+                                       " (dev tree)" if IS_DEV_TREE else ""))
     sys.exit(0 if ok else 1)
 
 

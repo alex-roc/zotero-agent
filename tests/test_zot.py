@@ -490,6 +490,33 @@ class TestPluginVersionReporting(unittest.TestCase):
         self.assertGreater(admin._version_tuple("0.10.0"), admin._version_tuple("0.9.9"))
         self.assertEqual(admin._version_tuple("0.3.0rc1"), (0, 3, 0))
 
+    def test_dev_tree_is_told_apart_from_an_installed_copy(self):
+        """Switching an editable install for a released one leaves the version
+        identical, so this predicate is the only thing that distinguishes them."""
+        from zotero_agent import constants
+        self.assertFalse(constants.is_dev_tree(
+            "/opt/homebrew/Cellar/zotero-agent/0.4.0/libexec/lib/python3.14/site-packages/zotero_agent"))
+        self.assertFalse(constants.is_dev_tree("/usr/lib/python3/dist-packages/zotero_agent"))
+        self.assertTrue(constants.is_dev_tree("/Users/me/dev/zotero-agent/src/zotero_agent"))
+        # These tests always run from a checkout, so the ambient value must agree.
+        self.assertTrue(constants.IS_DEV_TREE)
+
+    def test_ping_reports_which_install_answered(self):
+        """`zot ping` is what people paste into bug reports; it has to say where the
+        CLI ran from, or a brew/uv/editable mix-up is invisible."""
+        with FakeZotero() as srv:
+            cfg = {"base": srv.base, "token": "t", "userID": 1}
+            with mock.patch.object(admin, "post_code",
+                                   return_value={"ok": True, "result": 2, "version": admin.VERSION}), \
+                 mock.patch("zotero_agent.config.require_config", return_value=cfg):
+                buf = io.StringIO()
+                with redirect_stdout(buf), self.assertRaises(SystemExit):
+                    admin.cmd_ping(_args())
+        out = buf.getvalue()
+        self.assertIn("zot source", out)
+        self.assertIn("(dev tree)", out)          # the suite runs from a checkout
+        self.assertNotIn(os.path.expanduser("~"), out, "the home path should be shown as ~")
+
     def test_ping_prints_the_plugin_version(self):
         with FakeZotero() as srv:
             cfg = {"base": srv.base, "token": "t", "userID": 1}

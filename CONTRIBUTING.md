@@ -38,31 +38,40 @@ before touching `src/zotero_agent/pdf/`:
 uv pip install pymupdf && python3 -m unittest discover -s tests
 ```
 
-## Running the dev tree next to an installed `zot`
+## Switching `zot` between the dev tree and a release
 
-You usually want both: the working tree, and the thing your users actually get.
-Two ways, and they differ in whether you keep the second one:
-
-```bash
-# a) the repo's own shim — no install, always runs ./src, leaves an installed
-#    release alone so you can compare against it
-alias zotd="$PWD/cli/zot"
-zotd --version && zotd ping
-
-# b) point your installed `zot` at the checkout instead (replaces the release)
-uv tool install --force --editable . --with pymupdf
-```
-
-Prefer (a) while working on a release route (PyPI, Homebrew), and (b) when you
-just want `zot` to be the dev version everywhere.
-
-**Know which one you are running.** PATH order decides, silently: on macOS
-`/opt/homebrew/bin` normally precedes `~/.local/bin`, so a Homebrew install
-shadows a `uv tool` one.
+There is **one `zot`**, and the last install wins. Keep a single name rather than a
+second one for development: an alias only exists in interactive shells, so it would
+not apply in scripts, in cron, or when an MCP client launches the CLI.
 
 ```bash
-readlink -f "$(command -v zot)"   # /opt/homebrew/… = brew, ~/.local/… = uv/pipx
+# dev: `zot` becomes the working tree, and follows your edits with no reinstall
+cd /path/to/zotero-agent && uv tool install --force --editable ".[mcp,toc]"
+
+# release: `zot` becomes what users get
+uv tool install --force --refresh "zotero-agent[mcp,toc]"
 ```
+
+`--refresh` is not decorative: without it uv can serve cached index metadata and
+hand you the previous version.
+
+**Know which one is answering.** Both print the same version number, so the CLI
+says it itself:
+
+```console
+$ zot --version
+zot (zotero-agent) 0.4.0 (dev)      # `(dev)` = running from a checkout
+$ zot ping | tail -1
+zot source       : ~/dev/zotero-agent/src/zotero_agent (dev tree)
+```
+
+That is `constants.IS_DEV_TREE`: the package sits outside any `site-packages`. The
+`zot source` line also tells uv from Homebrew from pipx, which `PATH` order alone
+hides — on macOS `/opt/homebrew/bin` normally precedes `~/.local/bin`, so a Homebrew
+install silently shadows a uv one.
+
+For a one-off run without touching your install, `cli/zot` is a shim that puts
+`./src` on `sys.path` (`python3 cli/zot ping`).
 
 **They share config and state.** `~/.config/zotero-agent/config.json` and
 `~/.local/state/zotero-agent/` are fixed to `$HOME`

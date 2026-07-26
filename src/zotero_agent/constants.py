@@ -24,6 +24,22 @@ XPI_URL = "https://github.com/alex-roc/zotero-agent/releases/latest/download/zot
 
 VERSION = __version__
 
+# Where this CLI runs from. A released install lives inside site-packages; an
+# editable install (or `cli/zot`) imports the package straight out of a working
+# tree. Both print the same version, so without this nobody — a user filing a bug,
+# a maintainer switching between the two — can tell which one answered. `zot ping`
+# prints it and `--version` marks a dev tree.
+SOURCE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def is_dev_tree(path=None):
+    """True when `path` is a checkout rather than an installed copy."""
+    parts = (path or SOURCE_DIR).split(os.sep)
+    return not ("site-packages" in parts or "dist-packages" in parts)
+
+
+IS_DEV_TREE = is_dev_tree()
+
 # Exit codes (documented; kept < 126 to avoid shell conflicts).
 EXIT_GENERIC = 1       # generic error / failed check
 EXIT_CONN = 2          # cannot reach Zotero, or a bridge runtime error

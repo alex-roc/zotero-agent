@@ -56,6 +56,7 @@ SHARED_FACTS = {
         (r"brew install alex-roc/tap/zotero-agent", "the Homebrew route"),
         (r"brew upgrade zotero-agent", "how the Homebrew install is updated"),
         (r"command -v zot", "which install wins when two routes are present"),
+        (r"zot source", "the ping line that names the answering install"),
         (r"both extras|extras included|everything", "that brew ships the extras, "
                                                     "since a keg cannot gain them later"),
     ],

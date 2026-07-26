@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **`zot ping` now reports which install answered**, and `zot --version` marks a
+  checkout as `(dev)`. Two copies of the same version — an editable install and a
+  released one, or Homebrew's and uv's — were indistinguishable from the output,
+  which matters both when switching between them and when reading a bug report:
+
+  ```
+  zot source       : ~/dev/zotero-agent/src/zotero_agent (dev tree)
+  ```
+
+  The path also names the route (`~/.local/share/uv/…`, `/opt/homebrew/Cellar/…`),
+  and `~` replaces the home directory so pasted output carries no username.
 - **Homebrew is an install route again — `brew install alex-roc/tap/zotero-agent`.**
   0.4.0 retired the old tap because it shipped without the `[mcp]` extra, pinned an
   interpreter by hand, and needed a manual `url`/`sha256` bump per release. All

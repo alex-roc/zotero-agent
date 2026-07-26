@@ -5,6 +5,7 @@ import urllib.error
 
 from . import __version__
 from .commands import admin, features, read, toc, write
+from .constants import IS_DEV_TREE
 from .term import ZotError, die, set_verbosity
 
 
@@ -26,7 +27,10 @@ def build_parser():
         "-q, --yes, --base/--token/--user-id) go after the subcommand. Exit codes: "
         "0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.",
     )
-    p.add_argument("--version", action="version", version="zot (zotero-agent) %s" % __version__)
+    # The `(dev)` marker matters because switching between an editable install and
+    # a released one leaves the version identical: see constants.IS_DEV_TREE.
+    p.add_argument("--version", action="version",
+                   version="zot (zotero-agent) %s%s" % (__version__, " (dev)" if IS_DEV_TREE else ""))
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add(name, func, help):

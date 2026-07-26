@@ -112,15 +112,22 @@ A healthy `zot ping` looks like this:
 $ zot ping
 Zotero local API : up (HTTP 200)
 bridge endpoint  : up (/zotero-agent, 1+1 == 2)
-bridge plugin    : 0.3.0
+bridge plugin    : 0.4.0
 userID           : 2960998
-zot version      : 0.3.0
+zot version      : 0.4.0
+zot source       : ~/.local/share/uv/tools/zotero-agent/lib/python3.13/site-packages/zotero_agent
 ```
 
 If the **bridge endpoint** shows `FAIL`, the plugin is not loaded — reinstall the
 `.xpi` via *Tools → Plugins → gear → Install Plugin From File…* and confirm it is
 enabled. **bridge plugin** is the version the installed plugin reports; when it
 differs from **zot version**, `ping` tells you which side to update.
+
+**zot source** says which install answered, which matters when more than one route
+is present — they all report the same version. `~/.local/share/uv/…` is uv,
+`/opt/homebrew/Cellar/…` is Homebrew, and a path outside any `site-packages` is a
+checkout, which `zot --version` also marks as `(dev)`. Please include this line in
+bug reports.
 
 ## Updating
 
