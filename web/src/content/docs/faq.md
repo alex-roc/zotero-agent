@@ -81,7 +81,8 @@ uv tool install --force "zotero-agent[toc]"
 ```
 
 The extra pulls in PyMuPDF, a multi-megabyte binary wheel, which is why it is not
-installed by default. It needs Python 3.10+.
+installed by default. It needs Python 3.10+. A Homebrew install already includes
+it, so this error cannot happen on that route.
 
 ## Will `zot toc` damage my PDFs or lose my highlights?
 

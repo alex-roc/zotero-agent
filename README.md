@@ -74,6 +74,7 @@ uv tool install zotero-agent            # recommended
 uv tool install "zotero-agent[mcp]"     # + the MCP server (zot mcp)
 uv tool install "zotero-agent[mcp,toc]" # + PDF outlines (zot toc)
 pipx install "zotero-agent[mcp]"
+brew install alex-roc/tap/zotero-agent  # macOS/Linux; ships both extras
 
 # 2) the bridge plugin in Zotero — download the XPI (this link is permanent):
 #    https://github.com/alex-roc/zotero-agent/releases/latest/download/zotero-agent-bridge.xpi
@@ -88,8 +89,9 @@ zot ping      # local API up? bridge answering? plugin version? userID known?
 zot skill install           # → ~/.claude/skills/zotero  (--project for one repo)
 ```
 
-Updating: `uv tool upgrade zotero-agent` for the CLI; the plugin updates itself
-(Zotero polls the release manifest), and `zot ping` shows both versions.
+Updating: `uv tool upgrade zotero-agent` (or `brew upgrade zotero-agent`) for the
+CLI; the plugin updates itself (Zotero polls the release manifest), and `zot ping`
+shows both versions.
 
 Requires **Zotero 7+** (tested through 9.x) running with the local API enabled
 (the default), and **Python 3.10+**. Full guide: [`docs/install.md`](docs/install.md).

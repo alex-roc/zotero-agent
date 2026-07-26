@@ -34,12 +34,14 @@ SHARED_FACTS = {
         (r"release asset", "the XPI's single distribution channel"),
         (r"updates\.json", "Zotero auto-update manifest"),
         (r"zot skill install", "how the skill is installed"),
+        (r"[Hh]omebrew", "the tap as a generated mirror of the PyPI sdist"),
     ],
     "security": [
         (r"X-Zotero-Agent-Token", "the required token header"),
         (r"update_hash", "sha256-verified plugin updates"),
         (r"loopback", "loopback-only binding"),
         (r"extensions\.zotero-agent\.token", "the pref that overrides the token"),
+        (r"--require-hashes", "what the Homebrew route pins"),
     ],
     "install": [
         (r"releases/latest/download/zotero-agent-bridge\.xpi", "permanent XPI link"),
@@ -51,6 +53,10 @@ SHARED_FACTS = {
         (r"uv tool uninstall", "how to uninstall the CLI"),
         (r"zotero-agent\[toc\]", "the extra that enables zot toc"),
         (r"pymupdf", "what the toc extra pulls in"),
+        (r"brew install alex-roc/tap/zotero-agent", "the Homebrew route"),
+        (r"brew upgrade zotero-agent", "how the Homebrew install is updated"),
+        (r"both extras|extras included|everything", "that brew ships the extras, "
+                                                    "since a keg cannot gain them later"),
     ],
 }
 
@@ -58,7 +64,6 @@ SHARED_FACTS = {
 FORBIDDEN = [
     (r"zot plugin build", "the removed plugin-build command"),
     (r"skill/scripts", "the XPI bundling that no longer happens"),
-    (r"brew install alex-roc", "the retired Homebrew tap"),
     (r"self-built plugin", "the XPI is built in CI, not by users"),
 ]
 
@@ -88,7 +93,10 @@ class TestDocParity(unittest.TestCase):
     def test_retired_wording_is_gone_everywhere(self):
         roots = [os.path.join(_ROOT, "docs"), os.path.join(_ROOT, "web", "src", "content", "docs"),
                  os.path.join(_ROOT, "skill")]
-        pages = [os.path.join(_ROOT, "README.md")]
+        # install.sh is scanned too: its header comment described `zot plugin build`
+        # and bundling into skill/scripts/ for two releases after both were removed,
+        # precisely because it sat outside this sweep.
+        pages = [os.path.join(_ROOT, "README.md"), os.path.join(_ROOT, "install.sh")]
         for root in roots:
             for dirpath, _dirs, files in os.walk(root):
                 pages += [os.path.join(dirpath, f) for f in files if f.endswith((".md", ".mdx"))]

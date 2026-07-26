@@ -158,7 +158,7 @@ Zotero's reader has an **Outline** tab that shows the bookmarks embedded in the
 PDF, but it cannot create them, and its own auto-extraction is experimental and
 noisy. `zot toc` writes a real outline into the file, which fixes the sidebar
 permanently and in every other reader too. Needs the `[toc]` extra
-(`uv tool install --force "zotero-agent[toc]"`).
+(`uv tool install --force "zotero-agent[toc]"`; a Homebrew install already has it).
 
 **You are the judgement step.** The CLI gathers evidence and writes the result;
 deciding which lines are chapters and how they nest is your job.

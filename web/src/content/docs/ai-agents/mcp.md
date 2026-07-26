@@ -16,6 +16,7 @@ Both drive the **same local library** and follow the same safety rules.
 
 ```bash
 uv tool install "zotero-agent[mcp]"   # or: pipx install "zotero-agent[mcp]"
+# a Homebrew install already includes it: brew install alex-roc/tap/zotero-agent
 zot init && zot ping                   # confirm the bridge is answering
 ```
 

@@ -79,10 +79,17 @@ recipe book in `skill/references/recipes.md` — docs link to it rather than res
 it. The MCP tools call the same command functions the CLI does, so the two surfaces
 cannot diverge.
 
-Distribution follows the same rule: **one route per surface, one version for all**.
+Distribution follows the same rule: **one artifact per surface, one version for all**.
 The CLI, the MCP server and the skill ship in the PyPI package (`zot skill install`
 unpacks the skill), while the plugin XPI is published **only** as a GitHub Release
 asset. Zotero keeps it current from `updates.json`, which the release workflow
 generates from the tag; the build stamps the package version into the plugin, so a
 released XPI can never disagree with the CLI it answers — and `zot ping` prints both
 versions. See [Install](/zotero-agent/getting-started/install/#updating).
+
+**Homebrew** adds an install route without adding an artifact. The formula is
+generated from the sdist a release publishes to PyPI — `scripts/gen_homebrew_formula.py`
+fills in the `url`, the `sha256` and a hash-pinned lock of the optional extras. The
+tap therefore mirrors PyPI instead of building anything of its own, and no hash is
+ever edited by hand: that manual bump is precisely what made the project's first
+tap unmaintainable.

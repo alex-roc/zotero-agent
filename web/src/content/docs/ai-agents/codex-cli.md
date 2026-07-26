@@ -15,7 +15,8 @@ command = "zot"
 args = ["mcp"]
 ```
 
-Install the MCP extra first (`uv tool install "zotero-agent[mcp]"`) and verify
+Install the MCP extra first (`uv tool install "zotero-agent[mcp]"` — a Homebrew
+install already includes it) and verify
 with `zot ping`.
 
 ## Via the CLI + AGENTS.md

@@ -1,7 +1,9 @@
 name: Release
 
 # Tag a version (vX.Y.Z) to build the XPI + wheel, publish a GitHub Release with
-# the XPI attached, and publish the package to PyPI via Trusted Publishing.
+# the XPI attached, publish the package to PyPI via Trusted Publishing, and
+# announce the release in the two manifests that live on main: updates.json (the
+# plugin's auto-update) and the Homebrew formula (which the tap mirrors).
 #
 # One-time setup on pypi.org: add a Trusted Publisher for this repo + workflow
 # (Publishing → Add a new pending publisher) so no API token is needed here.
@@ -44,29 +46,46 @@ jobs:
           files: release-assets/*.xpi
           generate_release_notes: true
 
-      - name: Point updates.json at this release (Zotero auto-update)
-        # The installed plugin polls updates.json on main; if it is not bumped
-        # here, nobody ever receives the update.
-        run: |
-          XPI="$(ls release-assets/zotero-agent-bridge-*.xpi)"
-          # Generate while still on the tag, so the version comes from the tagged
-          # commit even if main has moved on; then carry the file over to main.
-          python3 scripts/gen_updates_json.py --xpi "$XPI"
-          cp updates.json "$RUNNER_TEMP/updates.json"
-          git fetch origin main
-          git checkout -B main origin/main
-          cp "$RUNNER_TEMP/updates.json" updates.json
-          if git diff --quiet -- updates.json; then
-            echo "updates.json already current"
-          else
-            git config user.name  "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git commit -m "release: announce ${GITHUB_REF_NAME} in updates.json" -- updates.json
-            git push origin main
-          fi
-
       - name: Publish to PyPI (Trusted Publishing)
+        # Before the commit below, because the Homebrew formula points at this
+        # sdist's PyPI URL: publishing first means the formula never names a file
+        # that does not exist yet.
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist          # wheel + sdist only
           verbose: true
+
+      - name: Announce the release on main (plugin auto-update + Homebrew)
+        # Two manifests, one commit, both of which strand users if they lag:
+        # updates.json is what the installed plugin polls, and the formula is what
+        # the tap mirrors. The formula's sha256 comes from the sdist just built —
+        # hatchling sdists are not byte-identical across machines, so it cannot be
+        # precomputed when preparing the release.
+        run: |
+          XPI="$(ls release-assets/zotero-agent-bridge-*.xpi)"
+          # Generate while still on the tag, so the version comes from the tagged
+          # commit even if main has moved on; then carry the files over to main.
+          python3 scripts/gen_updates_json.py --xpi "$XPI"
+          python3 scripts/gen_homebrew_formula.py --sdist dist/zotero_agent-*.tar.gz
+          cp updates.json packaging/homebrew/zotero-agent.rb "$RUNNER_TEMP/"
+          git fetch origin main
+          git checkout -B main origin/main
+          cp "$RUNNER_TEMP/updates.json" updates.json
+          cp "$RUNNER_TEMP/zotero-agent.rb" packaging/homebrew/zotero-agent.rb
+          if git diff --quiet -- updates.json packaging/homebrew/zotero-agent.rb; then
+            echo "both manifests already current"
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "release: announce ${GITHUB_REF_NAME} in updates.json and the Homebrew formula" \
+              -- updates.json packaging/homebrew/zotero-agent.rb
+            git push origin main
+          fi
+
+      - name: Remind the maintainer to sync the tap
+        # GITHUB_TOKEN cannot dispatch another repo's workflow, and this project
+        # deliberately stores no PAT. The tap does not poll for a file that only
+        # changes at release time, so this command is how the formula gets there;
+        # its weekly schedule is only a net for having forgotten it.
+        run: |
+          echo "::notice::Formula committed. Now run: gh workflow run sync.yml --repo alex-roc/homebrew-tap"

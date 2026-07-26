@@ -43,6 +43,30 @@ AGPL-3.0, the same licence).
 
 This puts `zot` on your `PATH`.
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew install alex-roc/tap/zotero-agent
+```
+
+One command, and unlike the uv/pipx routes it ships **both extras** — `zot mcp`
+and `zot toc` work immediately. That is not generosity: Homebrew replaces a keg
+wholesale on every upgrade, so an extra added afterwards would vanish at the next
+`brew upgrade`. Budget ~35 MB of downloads and ~100 MB installed, most of it
+PyMuPDF.
+
+```bash
+brew upgrade zotero-agent    # the CLI; the Zotero plugin updates itself
+```
+
+:::note[How the formula stays honest]
+It is generated from the sdist each release publishes to PyPI and mirrored into
+[the tap](https://github.com/alex-roc/homebrew-tap) as part of that release, which
+also installs and tests it on macOS before you see it. So it can trail a fresh
+release by a few minutes — but it can never disagree with one. For a new version
+the moment it lands, use `uv tool upgrade zotero-agent`.
+:::
+
 ## 2. Install the bridge plugin
 
 The bridge is a small plugin that exposes one token-protected endpoint,
@@ -99,6 +123,7 @@ The CLI and the plugin ship together and share a version number.
 
 ```bash
 uv tool upgrade zotero-agent      # or: pipx upgrade zotero-agent
+brew upgrade zotero-agent         # if you installed it with Homebrew
 ```
 
 If `zot --version` still shows the previous release, uv is using cached index
@@ -194,6 +219,7 @@ checks:
 
    ```bash
    uv tool uninstall zotero-agent          # or: pipx uninstall zotero-agent
+   brew uninstall zotero-agent             # if you installed it with Homebrew
    rm ~/.local/bin/zot ~/.claude/skills/zotero   # the ./install.sh dev symlinks
    ```
 

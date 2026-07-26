@@ -78,10 +78,17 @@ The canonical sources live once. The generated JS lives in `jslib` (not copied
 per command); the MCP tools call the same command functions the CLI does; the
 recipe book (`skill/references/recipes.md`) is linked, not restated.
 
-Each surface has exactly one distribution route, and one version covers them all:
-the CLI, the MCP server and the skill ship in the **PyPI package** (`zot skill
+Each surface has exactly one **artifact**, and one version covers them all: the
+CLI, the MCP server and the skill ship in the **PyPI package** (`zot skill
 install` unpacks the skill; `cli/zot` is the dev shim), while the plugin XPI ships
 **only** as a GitHub Release asset. Zotero then keeps it current from
 `updates.json`, which the release workflow generates from the tag —
 `scripts/build_xpi.py` stamps the package version into the plugin, so a released
 XPI can never disagree with the CLI it answers, and `zot ping` reports both.
+
+**Homebrew** is a third install route but not a third artifact: the formula in
+`packaging/homebrew/` is *generated* from the sdist a release publishes to PyPI
+(`scripts/gen_homebrew_formula.py` writes the `url`, the `sha256`, and a
+hash-pinned lock of the extras). So the tap mirrors PyPI rather than rebuilding
+anything, and nobody edits a hash by hand — which is what made the first attempt
+at a tap unmaintainable.

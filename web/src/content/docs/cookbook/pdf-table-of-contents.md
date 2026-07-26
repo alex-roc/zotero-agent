@@ -23,6 +23,7 @@ in the file.
 
 ```bash
 uv tool install --force "zotero-agent[toc]"
+# a Homebrew install already includes it: brew install alex-roc/tap/zotero-agent
 ```
 
 The PDF engine is an optional extra — see [Install](/zotero-agent/getting-started/install/).
