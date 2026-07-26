@@ -53,15 +53,22 @@ body in-process and returns the result as JSON. This mirrors the well-known
 - **Layer 1 — the `zotero_agent` package** (`src/zotero_agent/`, entry point
   `zot`): stdlib-only core. `http`/`resolve` handle the fast read API and the
   bridge; `jslib` centralises the generated JS (so the collection resolver and
-  "all regular items" scope exist once); `commands/{read,write,admin,features}`
+  "all regular items" scope exist once); `commands/{read,write,admin,features,toc}`
   hold the subcommands; each write is safe-by-default (refuses non-interactive
   runs without `--yes`). Batch edits (`apply`) snapshot first so `undo` can
   restore them. Config precedence: flags > `ZOTERO_AGENT_*` env >
   `~/.config/zotero-agent/config.json`.
+- **Layer 1b — the PDF engine** (`src/zotero_agent/pdf/`): the only part that
+  opens a file rather than talking to Zotero, behind the `[toc]` extra. PyMuPDF
+  is reached solely through `require_pymupdf()`, so the rest of the package stays
+  importable without it. Inside, `pagemap` is deliberately pure — the
+  printed-page-to-physical-page arithmetic is the subtle part, and keeping it
+  free of the engine is what makes it testable without a fixture PDF — while
+  `scan` reads a document and `outline` reads, validates and writes the tree.
 - **Layer 2a — the `zotero` skill** (`skill/`): teaches Claude Code to drive
   `zot`, including the safe workflow for bulk/destructive operations.
 - **Layer 2b — the MCP server** (`zot mcp`, `src/zotero_agent/mcp_server.py`):
-  exposes ~18 high-level tools to any MCP client. Each tool **reuses the CLI
+  exposes ~21 high-level tools to any MCP client. Each tool **reuses the CLI
   command functions** (with `--json`), so behaviour never diverges between the
   two surfaces. Optional `[mcp]` extra; `run_javascript` only with `--allow-exec`.
 

@@ -325,6 +325,32 @@ zot note [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 | `--if-not-exists` | skip if an identical note already exists (idempotent) |
 | `--dry-run` | show what would be added, don't write |
 
+## PDF outlines
+
+### `zot toc`
+
+```
+zot toc [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+               [--debug] [-y] [--json] [--from FILE] [--attachment ATTACHMENT]
+               [--dry-run] [--max-level MAX_LEVEL] [--offset OFFSET]
+               [--backup] [--mark-for-sync] [--cap CAP] [--samples SAMPLES]
+               {show,scan,set,auto,clear} key
+```
+
+| Argument | Description |
+|----------|-------------|
+| `action` | show the embedded outline, scan for evidence, set one from a file, build one automatically, or remove it |
+| `key` | item/attachment key, or a BBT citekey (prefix @ to force) |
+| `--from` | outline to write (for set); '-' reads stdin. Text or JSON. |
+| `--attachment` | attachment key, when the item has several PDFs |
+| `--dry-run` | preview the outline; don't touch the file |
+| `--max-level` | deepest nesting level to keep (default 4) |
+| `--offset` | force printed-page → physical-page delta instead of detecting it |
+| `--backup` | copy the untouched PDF into ~/.local/state/zotero-agent first |
+| `--mark-for-sync` | tell Zotero to re-upload the file on the next sync |
+| `--cap` | max heading candidates in a scan |
+| `--samples` | rows to print per section of a scan |
+
 ## Batch (undoable)
 
 ### `zot apply`

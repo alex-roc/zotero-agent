@@ -8,8 +8,8 @@
 <p align="center">
   <a href="https://pypi.org/project/zotero-agent/"><img src="https://img.shields.io/pypi/v/zotero-agent?color=3775A9&logo=pypi&logoColor=white" alt="PyPI"></a>
   <a href="https://github.com/alex-roc/zotero-agent/actions/workflows/ci.yml"><img src="https://github.com/alex-roc/zotero-agent/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/pypi/pyversions/zotero-agent" alt="Python 3.9+">
-  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
+  <img src="https://img.shields.io/pypi/pyversions/zotero-agent" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0">
   <a href="https://alex-roc.github.io/zotero-agent/"><img src="https://img.shields.io/badge/docs-website-0a7ea4" alt="Docs"></a>
 </p>
 
@@ -72,6 +72,7 @@ Per-client setup: [`docs/ai-agents.md`](docs/ai-agents.md) · [website](https://
 # 1) the CLI (pick one)
 uv tool install zotero-agent            # recommended
 uv tool install "zotero-agent[mcp]"     # + the MCP server (zot mcp)
+uv tool install "zotero-agent[mcp,toc]" # + PDF outlines (zot toc)
 pipx install "zotero-agent[mcp]"
 
 # 2) the bridge plugin in Zotero — download the XPI (this link is permanent):
@@ -91,7 +92,7 @@ Updating: `uv tool upgrade zotero-agent` for the CLI; the plugin updates itself
 (Zotero polls the release manifest), and `zot ping` shows both versions.
 
 Requires **Zotero 7+** (tested through 9.x) running with the local API enabled
-(the default), and **Python 3.9+**. Full guide: [`docs/install.md`](docs/install.md).
+(the default), and **Python 3.10+**. Full guide: [`docs/install.md`](docs/install.md).
 
 ## Use it from the shell
 
@@ -118,6 +119,7 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 |-------|----------|
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
 | **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` |
+| **PDF outlines** | `toc` (show/scan/set/auto/clear) — needs the `[toc]` extra |
 | **Batch (undoable)** | `apply` `undo` `enrich` |
 | **Setup / escape** | `ping` `init` `skill` `backup` `sync` `exec` `mcp` `completion` |
 
@@ -139,6 +141,32 @@ zot undo last                     # restore exactly the prior state
 
 This is how agents do LLM-assisted cleanup safely: the model decides the values
 and writes the JSONL; `zot` performs the writes. The CLI never calls an LLM itself.
+
+### Give a PDF a real table of contents
+
+Zotero's reader has an **Outline** tab, but it can only display bookmarks a PDF
+already has — and most scanned books and reports have none. `zot toc` builds one
+and writes it into the file, so the sidebar works in Zotero and everywhere else.
+
+```bash
+uv tool install --force "zotero-agent[toc]"   # the PDF engine is an extra
+zot toc show ABCD1234                 # what the file already has
+zot toc scan ABCD1234                 # what it could have, and from which evidence
+zot toc auto ABCD1234 --dry-run       # build one deterministically, preview it
+zot toc set  ABCD1234 --from toc.txt  # write your own (title<TAB>page, indented)
+zot undo last                         # restore the previous outline
+```
+
+Detection prefers **the book's own contents page** over guessing from fonts —
+those titles and that nesting are the publisher's. When the contents page prints
+page numbers rather than linking, `zot toc` maps them onto physical pages using
+`/PageLabels`, the folios printed on each page, and a title search to confirm
+each row. That matters more than it sounds: front matter is numbered i, ii, iii
+and the body restarts at 1, so a single offset is wrong for half the book.
+
+Same loop from an agent: `zot toc scan --json` hands over the evidence, the model
+decides the hierarchy, `zot toc set --from -` writes it. Writes are guarded by
+`--yes`, previewable with `--dry-run`, and reversible with `zot undo`.
 
 ## Use it from an agent
 
@@ -173,6 +201,7 @@ uv build                                # wheel + sdist
 bash plugin/build.sh                    # rebuild the bridge XPI
 ```
 
-The core is **stdlib-only** (the MCP server is the sole optional dependency).
+The core is **stdlib-only**; the optional surfaces ride behind extras (`[mcp]`
+for the MCP server, `[toc]` for the PDF outline commands).
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CHANGELOG.md`](CHANGELOG.md).
-License: [MIT](LICENSE).
+License: [AGPL-3.0-or-later](LICENSE).

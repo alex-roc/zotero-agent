@@ -86,3 +86,10 @@ its trust chain is HTTPS plus this repo:
 - The token is **not** a secret against local processes running as your user;
   it defends against browser-origin and other-host access, not against code you
   already run locally.
+- `zot toc` is the one command that writes **outside the database**: it edits the
+  attachment file itself. It touches only the outline tree and saves
+  incrementally, so existing bytes — including scanned page images — are left
+  alone, and Zotero keeps annotations in `zotero.sqlite` rather than in the PDF,
+  so they survive. It still asks the bridge only for the path; the file write is
+  local. Use `--dry-run` to preview, `--backup` to keep the original bytes, and
+  `zot undo` to restore the previous outline.

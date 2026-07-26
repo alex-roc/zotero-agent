@@ -7,18 +7,17 @@ name = "zotero-agent"
 dynamic = ["version"]
 description = "Local read-write control of a Zotero library — from your terminal or your AI agent. No cloud, no API key."
 readme = "README.md"
-license = "MIT"
-requires-python = ">=3.9"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.10"
 authors = [{ name = "Alex Ojeda Copa" }]
 keywords = ["zotero", "cli", "mcp", "ai-agent", "reference-manager", "bibliography", "local-first"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -31,6 +30,10 @@ dependencies = []  # core is stdlib-only, on purpose
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.2.0"]
+# `zot toc` reads and writes PDF outlines. PyMuPDF is a multi-megabyte binary
+# wheel and is AGPL-3.0 — the same licence as this project since 0.4.0 — but it
+# stays an extra so the 90% of the CLI that never opens a PDF installs light.
+toc = ["pymupdf>=1.24"]
 dev = ["ruff>=0.6"]
 
 [project.scripts]
@@ -68,7 +71,7 @@ exclude = ["/dist", "/web/node_modules", "/web/dist", "/zotero-workspace", "/ski
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B"]

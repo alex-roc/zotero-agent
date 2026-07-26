@@ -122,6 +122,11 @@ on the client's PATH, use the absolute path (`which zot`).
 `enrich_metadata`, `export_bibliography`, `undo_last`, and (with `--allow-exec`)
 `run_javascript`.
 
+With the `[toc]` extra, three more work on a PDF's table of contents:
+`get_pdf_outline`, `scan_pdf_outline` and `set_pdf_outline` (undoable). The scan
+returns evidence, not an answer — the model decides the hierarchy and writes it
+back. Without the extra they return the install command as an error.
+
 ## Safety
 
 Writes go through the token-protected bridge and are recorded to an audit log.

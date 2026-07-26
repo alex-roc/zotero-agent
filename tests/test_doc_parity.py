@@ -49,6 +49,8 @@ SHARED_FACTS = {
         (r"extensions\.zotero-agent\.token", "the token pref"),
         (r"~/\.local/state/zotero-agent", "the state dir an uninstall must remove"),
         (r"uv tool uninstall", "how to uninstall the CLI"),
+        (r"zotero-agent\[toc\]", "the extra that enables zot toc"),
+        (r"pymupdf", "what the toc extra pulls in"),
     ],
 }
 
