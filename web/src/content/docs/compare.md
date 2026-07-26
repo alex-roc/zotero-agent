@@ -20,9 +20,12 @@ things. This page is honest about where each one wins.
 
 **zotero-agent** — full read-write on your *local* library, no account, no API
 key, works offline, MCP-ready. Its edge is exactly that combination: local
-write + offline + privacy. The cost is that writes need a small privileged plugin
-with a documented [security model](/zotero-agent/security/), which you install
-yourself.
+write + offline + privacy. Working on the files themselves also makes things
+possible that a web API cannot reach at all — `zot toc` builds and embeds a PDF's
+table of contents, which fixes the empty Outline tab that Zotero's reader
+[cannot fill itself](https://github.com/zotero/zotero/issues/3396). The cost is
+that writes need a small privileged plugin with a documented
+[security model](/zotero-agent/security/), which you install yourself.
 
 **zotero-mcp** — excellent, and the better choice **if you already use zotero.org
 sync**. It writes through the Zotero *Web* API, which means it needs an account,

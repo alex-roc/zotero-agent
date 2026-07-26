@@ -10,6 +10,9 @@
  *   - a token is REQUIRED (403 without it),
  *   - browser-origin requests are rejected (CSRF / DNS-rebinding),
  *   - the server binds to loopback (Zotero default).
+ *
+ * Copyright (C) 2026 zotero-agent contributors.
+ * Licensed under the GNU Affero General Public License v3 or later; see LICENSE.
  */
 
 /* eslint-disable no-var */
@@ -18,7 +21,7 @@ if (typeof Zotero == "undefined") {
 }
 
 var BRIDGE = {
-  version: "0.3.0",
+  version: "0.4.0",
   endpointPath: "/zotero-agent",
   tokenPref: "extensions.zotero-agent.token",
   tokenHeader: "X-Zotero-Agent-Token",

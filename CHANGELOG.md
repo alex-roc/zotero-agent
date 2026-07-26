@@ -6,6 +6,71 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-26
+
+### Changed
+- **The licence is now AGPL-3.0-or-later** (was MIT). `zot toc` is built on
+  PyMuPDF, which is AGPL, and relicensing the project settles the question
+  outright rather than leaning on the optional-extra argument. Releases 0.1.0
+  through 0.3.0 remain MIT and can still be used under those terms.
+- **Minimum Python is now 3.10** (was 3.9), which is what current PyMuPDF
+  requires. The CI matrix moved to 3.10 / 3.13.
+
+### Added
+- **`zot toc` — read, detect and write a PDF's table of contents.** Zotero's
+  reader shows a PDF's embedded outline but cannot create one, and its own
+  automatic extraction is experimental and noisy, so most scanned books arrive
+  with an empty Outline tab. Five actions: `show`, `scan`, `set`, `auto`,
+  `clear`. Needs the new `[toc]` extra (`uv tool install --force
+  "zotero-agent[toc]"`); the core stays stdlib-only, and running `zot toc`
+  without it exits with the exact command that fixes it.
+
+  Detection prefers **the book's own contents page** over guessing from fonts,
+  by three routes in order of reliability:
+  - hyperlinked contents pages, where the link destination *is* the page
+    (born-digital ebooks) — exact, nothing to infer;
+  - printed page numbers, mapped onto physical pages via `/PageLabels`, the
+    folios printed on each page, and a title search that confirms each row. Each
+    numbering series is resolved independently, so roman front matter and an
+    arabic body both land correctly — a single global offset, which is what
+    comparable tools use, is wrong for half of any such book. Rows the title
+    search cannot confirm are re-placed using the delta the confirmed ones agree
+    on;
+  - typographic heading candidates, for the many books with no contents page at
+    all. This one is mostly about what it rejects: anything set smaller than the
+    body text (footnotes — numbered, short and block-initial, they otherwise
+    score exactly like sections), anything that fills the column (running text,
+    which matters for books that set block quotes above body size and use no
+    bold), sentences, figure captions, running heads and over-long lines. Levels
+    come from section numbering where the book numbers its sections, and
+    otherwise from font size — ignoring sizes that appear on only a page or two,
+    so a 24pt title page cannot claim level 1 and push every chapter to level 3.
+
+  Contents pages come in three layouts and all three are handled: dot leaders,
+  hyperlinks with no printed number at all, and a right-hand column of page
+  numbers (where the title and the number arrive as two unrelated text lines, so
+  nothing matches "title .... 15" and the page would otherwise be skipped in
+  favour of the list of figures two pages later). Lists of tables and figures are
+  rejected even when their running head says "Índice". Wrapped lines are rejoined
+  and de-hyphenated, so a title split across three lines is recorded whole
+  instead of as its last fragment.
+
+  Writes are guarded by `--yes`, previewable with `--dry-run`, and reversible
+  with `zot undo` — which snapshots the *previous outline* rather than copying a
+  200 MB book. The save is incremental, so existing bytes (and therefore scanned
+  page images) are untouched; `--backup` keeps a full copy of the original under
+  `~/.local/state/zotero-agent/pdf-backups/` — outside Zotero's own
+  `storage/<KEY>/`, so no stray file confuses it. Zotero's annotations
+  live in the database, not the file, so they survive.
+
+  `scan --json` is the agent hand-off: the CLI gathers the evidence, the agent
+  decides the hierarchy, `set --from -` writes it — the same division of labour
+  as `zot apply`. New MCP tools `get_pdf_outline`, `scan_pdf_outline` and
+  `set_pdf_outline`, and a new section in the bundled skill's
+  `references/pdf-and-notes.md`.
+- A `PDF outlines` group in the command reference, and a cookbook recipe,
+  *Give a PDF a table of contents*.
+
 ### Removed
 - **The Homebrew tap is no longer an install route.** The formula installed the
   package without the `[mcp]` extra (so `zot mcp` was missing), pinned
@@ -122,7 +187,8 @@ Single-user project, no back-compat shim: reinstall the bridge XPI and run
 - Initial release as `zotero-cli-skill`: `zotexec` plugin + `zot` CLI + Claude
   Code skill.
 
-[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/alex-roc/zotero-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/alex-roc/zotero-agent/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/alex-roc/zotero-agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/alex-roc/zotero-agent/releases/tag/v0.2.0

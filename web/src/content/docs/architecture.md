@@ -52,6 +52,16 @@ operations are built cleanly on the Zotero JS API (`export`, `missing`, `author`
 (refusing non-interactive writes without `--yes`). `exec` is the raw escape hatch
 (with `--dry-run`); `backup` snapshots the DB; `ping`/`init` set up.
 
+### Layer 1b — the PDF engine
+
+`src/zotero_agent/pdf/`: the only part that opens a file rather than talking to
+Zotero, behind the `[toc]` extra and used by `toc`. PyMuPDF is reached solely
+through `require_pymupdf()`, so the rest of the package stays importable without
+it. Inside, `pagemap` is deliberately pure — the printed-page-to-physical-page
+arithmetic is the subtle part, and keeping it free of the engine is what makes it
+testable without a fixture PDF — while `scan` reads a document and `outline`
+reads, validates and writes the tree.
+
 Config precedence: flags > `ZOTERO_AGENT_*` env >
 `~/.config/zotero-agent/config.json` — see
 [Configuration](/zotero-agent/reference/configuration/).

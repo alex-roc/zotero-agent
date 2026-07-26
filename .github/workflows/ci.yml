@@ -7,13 +7,13 @@ on:
 
 jobs:
   test:
-    # 3.9 and 3.13 bracket the supported range (requires-python = ">=3.9");
+    # 3.10 and 3.13 bracket the supported range (requires-python = ">=3.10");
     # both OSes matter because the tool targets the Zotero desktop app.
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.9", "3.13"]
+        python-version: ["3.10", "3.13"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +21,20 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Run tests (stdlib only, no network)
+        run: python -m unittest discover -s tests -v
+
+  test-toc:
+    # The `test` matrix runs without PyMuPDF, so every PDF-touching test skips
+    # there. This job installs the [toc] extra so they actually execute.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the toc extra
+        run: pip install pymupdf
+      - name: Run tests (with the PDF engine)
         run: python -m unittest discover -s tests -v
 
   lint:

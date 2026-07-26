@@ -1,6 +1,6 @@
 ---
 title: FAQ
-description: Troubleshooting zotero-agent — 403s, port 23119, unsigned-plugin warnings, PATH, Better BibTeX, and "is this safe?".
+description: Troubleshooting zotero-agent — 403s, port 23119, unsigned-plugin warnings, PATH, PDF outlines, Better BibTeX, and "is this safe?".
 ---
 
 ## `zot: command not found`
@@ -66,6 +66,34 @@ profile (auto-detected by `zot init`) is at:
 | macOS | `~/Library/Application Support/Zotero/Profiles/<random>.default*` |
 | Linux | `~/.zotero/zotero/<random>.default*` |
 | Windows | `%APPDATA%\Zotero\Zotero\Profiles\<random>.default*` |
+
+## `zot toc: invalid choice` or "needs a PDF engine"
+
+Two different things. **`invalid choice: 'toc'`** means the `zot` on your `PATH`
+predates the command — check `zot --version` against the
+[changelog](https://github.com/alex-roc/zotero-agent/blob/main/CHANGELOG.md) and
+upgrade with `uv tool upgrade zotero-agent`. **"needs a PDF engine"** means the
+CLI is current but the optional `[toc]` extra is not installed; the error prints
+the exact command, normally:
+
+```bash
+uv tool install --force "zotero-agent[toc]"
+```
+
+The extra pulls in PyMuPDF, a multi-megabyte binary wheel, which is why it is not
+installed by default. It needs Python 3.10+.
+
+## Will `zot toc` damage my PDFs or lose my highlights?
+
+No, on both counts. It replaces the outline tree and nothing else, and it saves
+**incrementally** — new objects are appended and every existing byte is left
+alone, so scanned page images are never recompressed. Your highlights live in
+`zotero.sqlite`, not in the PDF, and no page moves, so they are untouched.
+
+Preview with `--dry-run`, keep the original bytes with `--backup`, and reverse a
+write with `zot undo last`. Note that the file's bytes *do* change, so Zotero
+re-uploads it on the next sync — worth knowing before running it across a shelf
+of large scanned books.
 
 ## Does it conflict with Better BibTeX?
 

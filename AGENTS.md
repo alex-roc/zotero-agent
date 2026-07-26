@@ -20,6 +20,7 @@ zot collections | zot tags      # list
 zot stats                       # analytics
 zot missing abstract|date|doi [--collection C]
 zot author "<name>"  |  zot recent  |  zot lint
+zot toc show|scan <KEY>         # a PDF's table of contents (needs the [toc] extra)
 ```
 
 Add `--json` to any command for machine-readable output.
@@ -33,7 +34,15 @@ zot tag add|rm <tag> <KEY…> --yes   |   zot tag rename <old> --new <n> --yes
 zot move <collection> <KEY…> --yes
 zot note <KEY> --file note.html
 zot dedupe [--by title|doi] [--fuzzy] [--merge --yes]
+zot toc set|auto|clear <KEY> [--from f] --dry-run   # write a PDF's outline
 ```
+
+`zot toc` is the one command that modifies the **PDF file** rather than the
+library. `scan --json` gives you the evidence (the book's own contents page, or
+typographic heading candidates); you decide the hierarchy; `set --from -` writes
+it. Prefer `contentsToc` over `headingCandidates`, pass `physicalPage` through
+unchanged instead of computing pages yourself, and `zot undo last` restores the
+previous outline.
 
 ## Batch edits (preferred for anything at scale — undoable)
 

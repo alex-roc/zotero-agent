@@ -63,6 +63,20 @@
         "Reported total item count and a breakdown by item type",
         "Reported how many items have vs. lack a PDF attachment"
       ]
+    },
+    {
+      "id": 5,
+      "name": "pdf-table-of-contents",
+      "prompt": "El PDF del ítem QMECIBEX de mi Zotero no tiene tabla de contenidos y no puedo navegarlo. Genérale una y muéstramela antes de escribir nada.",
+      "expected_output": "Scans the PDF, reports which route the evidence supports, shows the proposed tree, and only writes after the user agrees — leaving an undo snapshot.",
+      "files": [],
+      "assertions": [
+        "Used `zot toc scan` (or the scan_pdf_outline tool) before proposing anything",
+        "Preferred the book's own contents page (contentsToc) over headingCandidates, since this PDF has one",
+        "Showed the proposed outline to the user before writing (used --dry-run, or did not pass --yes on the first call)",
+        "Passed physicalPage through unchanged instead of computing page numbers itself",
+        "Mentioned that `zot undo last` reverses the write"
+      ]
     }
   ]
 }

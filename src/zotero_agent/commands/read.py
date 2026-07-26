@@ -84,11 +84,15 @@ def cmd_cite(args):
             print("  PDF: " + p)
 
 
-def cmd_pdf(args):
-    """Print the local path(s) of the PDF attachment(s) of an item."""
-    from ..config import require_config
-    cfg = require_config(args)
-    key = resolve_key(cfg, args.key)
+def pdf_paths(cfg, key):
+    """{itemKey, title, pdfs:[{attachmentKey, path, title}]} for an item or
+    attachment key (or BBT citekey).
+
+    Always ask Zotero for the path rather than building `storage/<KEY>/...`
+    ourselves: getFilePath() is what resolves linked files and a configured base
+    directory. Shared by `zot pdf` and `zot toc`.
+    """
+    key = resolve_key(cfg, key)
     code = """
 var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, %r);
 if (!it) return { error: 'item not found: ' + %r };
@@ -102,7 +106,14 @@ for (var id of atts) {
 }
 return { itemKey: it.key, title: it.getField('title'), pdfs: out };
 """ % (key, key)
-    result = run_js(cfg, code, label="pdf") or {}
+    return run_js(cfg, code, label="pdf") or {}
+
+
+def cmd_pdf(args):
+    """Print the local path(s) of the PDF attachment(s) of an item."""
+    from ..config import require_config
+    cfg = require_config(args)
+    result = pdf_paths(cfg, args.key)
     pdfs = result.get("pdfs", [])
     if args.json:
         dump_json(result)

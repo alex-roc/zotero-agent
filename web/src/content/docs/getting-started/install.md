@@ -12,8 +12,8 @@ only read.
 
 - **Zotero 7+** (tested through 9.x) running, with its local API enabled (the
   default).
-- **Python 3.9+**. The CLI core is stdlib-only; the MCP server needs the `[mcp]`
-  extra.
+- **Python 3.10+**. The CLI core is stdlib-only; the MCP server needs the `[mcp]`
+  extra and the PDF outline commands need `[toc]`.
 - macOS or Linux. Windows works too — see [OS paths](#os-paths) below.
 
 ## 1. Install the CLI
@@ -21,10 +21,25 @@ only read.
 ```bash
 uv tool install zotero-agent            # CLI only
 uv tool install "zotero-agent[mcp]"     # CLI + MCP server (for AI agents)
+uv tool install "zotero-agent[toc]"     # CLI + PDF engine (zot toc)
+uv tool install "zotero-agent[mcp,toc]" # everything
 # or, with pipx:
 pipx install zotero-agent
 pipx install "zotero-agent[mcp]"
 ```
+
+The core is stdlib-only; the two extras are the only dependencies, and each is
+optional:
+
+| Extra | Pulls in | Enables |
+|-------|----------|---------|
+| `mcp` | `mcp` | `zot mcp`, the Model Context Protocol server |
+| `toc` | `pymupdf` | `zot toc`, reading and writing PDF outlines |
+
+`zot toc` without the extra exits with the exact command that fixes it, so
+installing it later is fine. Note that PyMuPDF is a multi-megabyte binary wheel —
+that, not licensing, is why it is not a hard dependency (this project is
+AGPL-3.0, the same licence).
 
 This puts `zot` on your `PATH`.
 

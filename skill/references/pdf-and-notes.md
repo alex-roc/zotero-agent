@@ -12,6 +12,7 @@ own PDF-reading tool — no OCR pipeline, no extraction step.
 - [3. Multi-level summaries (roll-up)](#3-multi-level-summaries)
 - [4. Use the user's existing annotations](#4-existing-annotations)
 - [5. Save the result as a note](#5-save-as-note)
+- [6. Build the PDF's table of contents](#6-table-of-contents)
 
 ## 1. Locate the PDF
 
@@ -150,9 +151,109 @@ for (var n of notes) { n.deleted = true; await n.saveTx(); }
 return notes.length + ' nota(s) enviadas a la papelera';
 ```
 
+<a id="6-table-of-contents"></a>
+## 6. Build the PDF's table of contents
+
+Zotero's reader has an **Outline** tab that shows the bookmarks embedded in the
+PDF, but it cannot create them, and its own auto-extraction is experimental and
+noisy. `zot toc` writes a real outline into the file, which fixes the sidebar
+permanently and in every other reader too. Needs the `[toc]` extra
+(`uv tool install --force "zotero-agent[toc]"`).
+
+**You are the judgement step.** The CLI gathers evidence and writes the result;
+deciding which lines are chapters and how they nest is your job.
+
+```bash
+zot toc show <ITEMKEY>                 # what the file already has
+zot toc scan <ITEMKEY> --json          # the evidence, for you to reason over
+zot toc set  <ITEMKEY> --from toc.txt --dry-run   # review
+zot toc set  <ITEMKEY> --from toc.txt --yes       # write
+zot undo last                          # restore the previous outline
+```
+
+### Reading a scan
+
+`suggestion` tells you which route the file supports:
+
+| suggestion | what it means | what to do |
+|---|---|---|
+| `contents-links` | the contents page hyperlinks to each chapter | use `contentsToc.entries` as-is — the pages are **exact** |
+| `contents-printed-numbers` | the contents page prints page numbers | use `contentsToc.entries`; check each `confidence` |
+| `typography` | no contents page — headings detected by their type | build from `headingCandidates` |
+| `ocr-needed` | page images, no text layer | stop; tell the user to run the `ocrmypdf` command `scan` prints |
+| `nothing-found` | text layer, but no structure | say so; don't invent one |
+
+**Always prefer `contentsToc` over `headingCandidates` when it is non-empty** —
+that hierarchy and those titles are the publisher's, and no font heuristic beats
+them.
+
+### When there is no contents page
+
+Plenty of books have none, so `scan` falls back to finding headings by their
+type. `headingCandidates` gives you each surviving line with its `size`, `bold`,
+`font`, `page` and a `score`. The obvious noise is already gone — the scan drops
+anything smaller than body text (footnotes), anything that fills the column
+(running text), sentences, figure captions, running heads, and it rejoins
+headings that were split across two lines. `bodyFontSize` tells you the baseline
+to compare `size` against.
+
+What is left for you:
+
+- **Cut the front matter.** Cover and half-title pages have the largest type in
+  the book and are not sections. They cluster in the first few pages, often
+  repeated once.
+- **Decide the levels.** If the book numbers its sections, "3.1.2." states its
+  own depth and you should use it. Otherwise group by `size`: one distinct size
+  is usually one level, and a size that appears on only two pages is a cover, not
+  a tier.
+- **Drop what is clearly not a section** — epigraph attributions, author names
+  under a chapter title, dedications.
+- **Say how confident you are.** This route is a draft, unlike the contents-page
+  routes. Show the user the tree before writing it.
+
+Each `contentsToc` entry carries a `confidence`:
+
+- `link` — the destination came from a hyperlink. Exact.
+- `verified` / `verified-shifted` — the title was found on that page. Trust it.
+- `labels` / `folio` — mapped from `/PageLabels` or a printed folio, unconfirmed.
+- `consensus` — re-placed using the delta the verified entries agree on.
+- `voted` / `offset` / `none` — a guess. Say so if you pass it through.
+
+### Two rules that matter
+
+1. **Never invent or adjust page numbers.** `printedPage` is what the book
+   prints; `physicalPage` is the page in the file. The CLI already did that
+   mapping — and it is harder than it looks, because front matter is numbered in
+   roman numerals and the body restarts at 1, so a single offset is wrong for
+   half the document. Pass `physicalPage` through unchanged.
+2. **Always `--dry-run` first**, and show the user the tree before writing.
+
+### Writing it back
+
+The format is one `title<TAB>page` per line, two spaces of indent per level:
+
+```
+Capítulo 1. Introducción	15
+  1.1 Antecedentes	17
+Capítulo 2. Método	48
+```
+
+JSON works too, so a `scan` result can go straight back in:
+`[{"level":1,"title":"…","page":15}]` (or with `physicalPage` instead of
+`page`). Write it to a file and pass `--from file`, or pipe it with `--from -`.
+
+`zot toc auto <ITEMKEY>` does scan → decide → write in one deterministic step,
+with no judgement from you. It is right often enough to be worth trying with
+`--dry-run`, but review the output: a collective volume where every chapter
+prints its own contents will come out in contents order rather than page order,
+and `normalize` will warn that pages go backwards.
+
 ## Safe-workflow reminder
 
-Reading is free; the only writes here are the notes you create, which are small
-and reversible (trash, not erase). For a batch (summarize many items at once),
-still test on 1–2 first and confirm the note format with the user before the
-full run — see SKILL.md.
+Reading is free. The notes you create are small and reversible (trash, not
+erase). `zot toc` is the one thing here that **modifies the PDF file itself** —
+it appends the new outline without touching existing bytes, and Zotero's
+annotations live in the database rather than the file, so they survive; still,
+use `--dry-run`, and `--backup` if the file is irreplaceable. For a batch, test
+on 1–2 first and confirm the format with the user before the full run — see
+SKILL.md.

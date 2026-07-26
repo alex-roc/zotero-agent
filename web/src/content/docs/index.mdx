@@ -43,12 +43,17 @@ account, no API key, no cloud.
     A documented three-layer model: required token, browser-origin guard,
     loopback binding, plus an append-only audit log — not an insecure debug bridge.
   </Card>
+  <Card title="PDF tables of contents" icon="open-book">
+    Zotero's reader shows a PDF's outline but cannot create one. `zot toc` builds
+    it — from the book's own contents page where there is one, from typography
+    where there isn't — and writes it into the file.
+  </Card>
 </CardGrid>
 
 ## Quickstart
 
 ```bash
-uv tool install "zotero-agent[mcp]"   # install the CLI (+ MCP server)
+uv tool install "zotero-agent[mcp,toc]"   # the CLI, + MCP server, + PDF outlines
 # then install the bridge plugin XPI: Tools -> Plugins -> gear -> Install Plugin From File
 zot init                               # generate a token, detect your userID
 zot ping                               # verify: local API up, bridge answering

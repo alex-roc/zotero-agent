@@ -15,10 +15,11 @@ between the two surfaces.
 
 import io
 import json
+import os
 from contextlib import redirect_stdout
 
 from . import __version__
-from .commands import features, read, write
+from .commands import features, read, toc, write
 from .term import ZotError, set_verbosity
 
 _DEFAULTS = dict(
@@ -26,6 +27,7 @@ _DEFAULTS = dict(
     base=None, token=None, user_id=None,
     limit=25, all=False, detail="concise", samples=1000, format="json",
     collection=None, item_type=None, tag=None,
+    max_level=4, cap=400,
 )
 
 
@@ -87,6 +89,56 @@ def serve(cli_args):
     def get_item_pdf_path(key: str) -> dict:
         """Return the local filesystem path(s) of an item's PDF attachment(s)."""
         return _run(read.cmd_pdf, key=key)
+
+    @mcp.tool()
+    def get_pdf_outline(key: str) -> dict:
+        """Read the table of contents (bookmarks) embedded in an item's PDF.
+
+        Empty `entries` means the PDF has none — Zotero's reader will show an
+        empty Outline tab. Use scan_pdf_outline to build one.
+        """
+        return _run(toc.cmd_toc, action="show", key=key)
+
+    @mcp.tool()
+    def scan_pdf_outline(key: str, cap: int = 400) -> dict:
+        """Gather the evidence needed to build a table of contents for a PDF.
+
+        Returns `suggestion` plus the evidence behind it:
+          contents-links     the book's contents page links to its chapters;
+                             `contentsToc.entries` already hold exact pages.
+          contents-printed-numbers
+                             the contents page prints page numbers, already
+                             mapped to physical pages with a `confidence` each.
+          typography         no contents page; `headingCandidates` lists lines
+                             that look like headings, with size/bold/page.
+          ocr-needed         page images only, nothing to read.
+
+        Prefer contentsToc over headingCandidates whenever it is non-empty: that
+        hierarchy is the publisher's. Build entries as
+        [{level, title, page}] with page = physicalPage, and write them with
+        set_pdf_outline. Never invent page numbers.
+        """
+        return _run(toc.cmd_toc, action="scan", key=key, cap=cap)
+
+    @mcp.tool()
+    def set_pdf_outline(key: str, entries: list, max_level: int = 4) -> dict:
+        """Write a table of contents into an item's PDF, replacing any existing one.
+
+        `entries` is [{"level": 1, "title": "...", "page": 15}, ...] with 1-based
+        physical pages and levels that never jump by more than one. The previous
+        outline is snapshotted first, so undo_last reverses this.
+        """
+        import json as _json
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
+                                         encoding="utf-8") as fh:
+            _json.dump(entries, fh)
+            path = fh.name
+        try:
+            return _run(toc.cmd_toc, action="set", key=key, from_=path,
+                        max_level=max_level)
+        finally:
+            os.unlink(path)
 
     @mcp.tool()
     def list_collections() -> dict:
