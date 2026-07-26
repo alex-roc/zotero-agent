@@ -38,8 +38,50 @@ before touching `src/zotero_agent/pdf/`:
 uv pip install pymupdf && python3 -m unittest discover -s tests
 ```
 
-To point your installed `zot` at the checkout (with the PDF engine) instead of
-the PyPI release: `uv tool install --force --editable . --with pymupdf`.
+## Running the dev tree next to an installed `zot`
+
+You usually want both: the working tree, and the thing your users actually get.
+Two ways, and they differ in whether you keep the second one:
+
+```bash
+# a) the repo's own shim — no install, always runs ./src, leaves an installed
+#    release alone so you can compare against it
+alias zotd="$PWD/cli/zot"
+zotd --version && zotd ping
+
+# b) point your installed `zot` at the checkout instead (replaces the release)
+uv tool install --force --editable . --with pymupdf
+```
+
+Prefer (a) while working on a release route (PyPI, Homebrew), and (b) when you
+just want `zot` to be the dev version everywhere.
+
+**Know which one you are running.** PATH order decides, silently: on macOS
+`/opt/homebrew/bin` normally precedes `~/.local/bin`, so a Homebrew install
+shadows a `uv tool` one.
+
+```bash
+readlink -f "$(command -v zot)"   # /opt/homebrew/… = brew, ~/.local/… = uv/pipx
+```
+
+**They share config and state.** `~/.config/zotero-agent/config.json` and
+`~/.local/state/zotero-agent/` are fixed to `$HOME`
+(`src/zotero_agent/constants.py`), so every copy uses the same token — no re-`init`
+— but they also share `audit.jsonl` and the `undo/` snapshots. Only
+`ZOTERO_AGENT_BASE` / `_TOKEN` / `_USER_ID` can be overridden per run; the
+directories cannot. So use `--dry-run` and 1–2 items for destructive experiments,
+the same discipline the skill asks of agents.
+
+**A version mismatch after a bump is the check working.** Raise `__version__` and
+`zot ping` will report the installed plugin as behind, because the XPI in Zotero
+still declares the old one. Rebuild and reinstall it (`bash plugin/build.sh`) and
+`ping` goes quiet.
+
+**Install the skill once, linked, from the checkout** — `zot skill install --link`
+symlinks `~/.claude/skills/zotero` at `skill/`, so your edits apply immediately.
+Do not run `zot skill install --force` from a *released* copy afterwards: it
+unlinks the symlink and copies in a snapshot (`assets.install_skill`), and you stop
+seeing your own changes. Without `--force` it refuses instead — that is the net.
 
 ## Making a change
 

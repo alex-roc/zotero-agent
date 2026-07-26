@@ -44,6 +44,11 @@ and ~100 MB installed, most of it PyMuPDF.
 brew upgrade zotero-agent    # the CLI; the Zotero plugin updates itself
 ```
 
+If you installed by two routes at once (say uv first, then Homebrew), **`PATH`
+order decides which one runs** — on macOS `/opt/homebrew/bin` normally comes before
+`~/.local/bin`, so the Homebrew one wins. `command -v zot` tells you which, and
+both share the same config and state, so nothing needs reconfiguring either way.
+
 The formula is generated from the sdist each release publishes to PyPI and
 mirrored into [the tap](https://github.com/alex-roc/homebrew-tap) as part of that
 release, which also installs and tests it on macOS before you see it. It can
