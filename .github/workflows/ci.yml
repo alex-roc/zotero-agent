@@ -61,6 +61,28 @@ jobs:
           git diff --exit-code -- docs/commands.md web/src/content/docs/reference/commands.md \
             || { echo "::error::Reference is stale — run 'python scripts/gen_cli_reference.py' and commit."; exit 1; }
 
+  homebrew:
+    # The formula installs the package with --no-deps and takes every dependency
+    # from packaging/homebrew/requirements.txt, so a stale lock ships a crippled
+    # `brew install` (the failure that retired the 0.3.0 tap). Recompiling keeps
+    # the existing pins — uv only moves them with --upgrade — so this job is
+    # quiet until pyproject's constraints actually change.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Verify the formula is generated output, not a hand edit
+        run: python3 scripts/gen_homebrew_formula.py --check
+      - name: Recompile the dependency lock
+        run: python3 scripts/gen_homebrew_formula.py --relock
+      - name: Fail if it drifted from the committed lock
+        run: |
+          git diff --exit-code -- packaging/homebrew/requirements.txt \
+            || { echo "::error::Homebrew lock is stale — run 'python scripts/gen_homebrew_formula.py --relock' and commit."; exit 1; }
+
   build-xpi:
     runs-on: ubuntu-latest
     steps:
