@@ -56,7 +56,14 @@ Per-client instructions:
 | `find_duplicates`, `merge_duplicates` | write |
 | `enrich_metadata` (undoable) | write |
 | `undo_last` | write |
+| `get_pdf_outline`, `scan_pdf_outline` (needs the `[toc]` extra) | read |
+| `set_pdf_outline` (undoable, needs `[toc]`) | write |
 | `run_javascript` (only with `--allow-exec`) | escape hatch |
+
+`scan_pdf_outline` returns evidence rather than an answer — the book's own
+contents page where it has one, typographic heading candidates where it does not
+— and the model decides the hierarchy before `set_pdf_outline` writes it. Without
+the extra installed, the three return the install command as an error.
 
 ## Safety
 

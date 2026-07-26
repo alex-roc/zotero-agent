@@ -49,12 +49,30 @@ def _snapshot(cfg, keys, label):
         "return snap;"
     ) % json.dumps(keys)
     snap = run_js(cfg, code, label="snapshot")
+    return _persist_snapshot(label, {"items": snap})
+
+
+def _persist_snapshot(label, payload):
     os.makedirs(UNDO_DIR, exist_ok=True)
     op_id = _op_id()
     path = os.path.join(UNDO_DIR, op_id + ".json")
+    body = {"opId": op_id, "label": label}
+    body.update(payload)
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump({"opId": op_id, "label": label, "items": snap}, fh, ensure_ascii=False)
+        json.dump(body, fh, ensure_ascii=False)
     return op_id
+
+
+def snapshot_outline(label, target):
+    """Snapshot a PDF's outline before `zot toc` overwrites it.
+
+    Deliberately *not* a copy of the file: a scanned book is hundreds of
+    megabytes, and the operation only replaces the outline tree, so storing the
+    previous tree restores exactly what was lost for a few kilobytes. The file's
+    bytes do change (an incremental save appends), which is why `zot toc set`
+    also offers --backup for people who want the original bytes back.
+    """
+    return _persist_snapshot(label, {"outline": target})
 
 
 # --------------------------------------------------------------------------- #
@@ -188,9 +206,41 @@ def _list_ops():
     return sorted(f[:-5] for f in os.listdir(UNDO_DIR) if f.endswith(".json"))
 
 
+def _describe_op(meta):
+    if "outline" in meta:
+        entries = meta["outline"].get("entries") or []
+        return "PDF outline, %d entr%s" % (len(entries), "y" if len(entries) == 1 else "ies")
+    return "%d item(s)" % len(meta.get("items", {}))
+
+
+def _undo_outline(args, meta, snapshot_path):
+    """Restore a PDF's previous outline. Rewrites the file, not the library, so
+    it never touches Zotero — the snapshot holds everything needed."""
+    from ..pdf import outline as pdf_outline
+    from ..pdf import scan as pdf_scan
+    target = meta["outline"]
+    pdf_path = target.get("path")
+    if not pdf_path or not os.path.exists(pdf_path):
+        die("the PDF this snapshot belongs to is gone: %s" % pdf_path, code=EXIT_NOTFOUND)
+    entries = target.get("entries") or []
+    confirm_write(args, "This restores the previous outline (%d entries) of %s."
+                  % (len(entries), pdf_path))
+    doc = pdf_scan.open_pdf(pdf_path)
+    try:
+        if entries:
+            pdf_outline.write_outline(doc, entries, pdf_path)
+        else:
+            pdf_outline.clear_outline(doc, pdf_path)
+    finally:
+        if not doc.is_closed:
+            doc.close()
+    print("Restored the outline of %s (%d entries)." % (pdf_path, len(entries)))
+    if not args.keep:
+        os.remove(snapshot_path)
+
+
 def cmd_undo(args):
     from ..config import require_config
-    cfg = require_config(args)
     ops = _list_ops()
     if args.op == "list":
         if not ops:
@@ -198,7 +248,7 @@ def cmd_undo(args):
         for op in ops:
             with open(os.path.join(UNDO_DIR, op + ".json"), encoding="utf-8") as fh:
                 meta = json.load(fh)
-            print("%-18s %-8s %d item(s)" % (op, meta.get("label", ""), len(meta.get("items", {}))))
+            print("%-18s %-8s %s" % (op, meta.get("label", ""), _describe_op(meta)))
         return
     if not ops:
         die("no undo snapshots available", code=EXIT_NOTFOUND)
@@ -208,6 +258,9 @@ def cmd_undo(args):
         die("no such undo snapshot: %s" % op_id, code=EXIT_NOTFOUND)
     with open(path, encoding="utf-8") as fh:
         meta = json.load(fh)
+    if "outline" in meta:
+        return _undo_outline(args, meta, path)
+    cfg = require_config(args)
     snap = meta.get("items", {})
     confirm_write(args, "This restores %d item(s) to their state before '%s'." % (len(snap), op_id))
     code = (

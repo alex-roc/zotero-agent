@@ -10,8 +10,9 @@ description: >-
   items by DOI/ISBN/arXiv, find and merge duplicates, edit fields/tags in bulk,
   get library stats, format bibliographies, read or ask questions about an
   item's PDF, summarize a document at multiple levels (whole/chapter/section),
-  read a PDF's highlights/annotations, or create notes on items. Requires the
-  zotero-agent bridge plugin installed and Zotero running.
+  read a PDF's highlights/annotations, generate a PDF's table of contents /
+  bookmarks / outline so Zotero's reader can navigate it, or create notes on
+  items. Requires the zotero-agent bridge plugin installed and Zotero running.
 ---
 
 # Zotero control (via the `zot` CLI)
@@ -72,6 +73,7 @@ zot annotations <key> [--to-note]                       # PDF highlights (opt. �
 zot related <key>                                       # related items
 zot notes <key>                                         # list an item's notes
 zot lint                                                # data-quality report
+zot toc show|scan <key>                                 # a PDF's table of contents
 ```
 
 Editing & organizing (these are **writes** — see safety below):
@@ -84,6 +86,7 @@ zot set <field> <value> <key…>                          # edit a field
 zot move <collection> <key…>                            # add items to a collection
 zot collection <name> [--parent K]                      # create a (sub)collection
 zot note <key> --file note.html [--if-not-exists]       # add a child note
+zot toc set|auto|clear <key> [--from f] [--dry-run]     # write a PDF's outline
 ```
 
 Batch / higher-level (all **undoable** except merges — see safety below):
@@ -164,6 +167,11 @@ short version:
 - Save results with **`zot note <ITEMKEY> --file note.html`** (a child note),
   not as PDF annotations (writing highlights needs fragile coordinate math).
   Notes are reversible (trash, not erase); `zot notes <ITEMKEY>` lists them.
+- To make a PDF navigable in Zotero's **Outline** tab, `zot toc scan <ITEMKEY>
+  --json` hands you the evidence, you decide the hierarchy, and `zot toc set
+  <ITEMKEY> --from -` writes it. Prefer the book's own contents page over
+  typographic guessing, and never invent page numbers — the same reference file
+  has the full procedure. Needs the `[toc]` extra.
 
 ## Safe workflow for bulk / destructive operations
 

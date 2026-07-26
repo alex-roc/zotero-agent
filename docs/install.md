@@ -11,7 +11,22 @@ The easy path (no checkout needed):
 ```bash
 uv tool install zotero-agent           # or: pipx install zotero-agent
 uv tool install "zotero-agent[mcp]"    # include the MCP server (zot mcp)
+uv tool install "zotero-agent[toc]"    # include the PDF engine (zot toc)
+uv tool install "zotero-agent[mcp,toc]"   # both
 ```
+
+Needs **Python 3.10+**. The core is stdlib-only; the two extras are the only
+dependencies, and each is optional:
+
+| Extra | Pulls in | Enables |
+|-------|----------|---------|
+| `mcp` | `mcp` | `zot mcp`, the Model Context Protocol server |
+| `toc` | `pymupdf` | `zot toc`, reading and writing PDF outlines |
+
+`zot toc` without the extra exits with the exact command that fixes it, so
+installing it later is fine. Note that PyMuPDF is a multi-megabyte binary wheel —
+that, not licensing, is why it is not a hard dependency (this project is
+AGPL-3.0, the same licence).
 
 The package also carries the agent surfaces (skill, `AGENTS.md`) — see
 [The agent skill](#the-agent-skill) below; no clone needed for those either.

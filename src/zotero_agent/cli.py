@@ -4,7 +4,7 @@ import argparse
 import urllib.error
 
 from . import __version__
-from .commands import admin, features, read, write
+from .commands import admin, features, read, toc, write
 from .term import ZotError, die, set_verbosity
 
 
@@ -52,6 +52,27 @@ def build_parser():
 
     sp = add("pdf", read.cmd_pdf, "print local path(s) of an item's PDF(s), by key or citekey")
     sp.add_argument("key", help="item/attachment key, or a BBT citekey (prefix @ to force)")
+
+    sp = add("toc", toc.cmd_toc, "read/detect/write a PDF's table of contents — needs the [toc] extra")
+    sp.add_argument("action", choices=["show", "scan", "set", "auto", "clear"],
+                    help="show the embedded outline, scan for evidence, set one from "
+                         "a file, build one automatically, or remove it")
+    sp.add_argument("key", help="item/attachment key, or a BBT citekey (prefix @ to force)")
+    sp.add_argument("--from", dest="from_", metavar="FILE",
+                    help="outline to write (for set); '-' reads stdin. Text or JSON.")
+    sp.add_argument("--attachment", help="attachment key, when the item has several PDFs")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="preview the outline; don't touch the file")
+    sp.add_argument("--max-level", dest="max_level", type=int, default=4,
+                    help="deepest nesting level to keep (default 4)")
+    sp.add_argument("--offset", type=int,
+                    help="force printed-page → physical-page delta instead of detecting it")
+    sp.add_argument("--backup", action="store_true",
+                    help="copy the untouched PDF into ~/.local/state/zotero-agent first")
+    sp.add_argument("--mark-for-sync", dest="mark_for_sync", action="store_true",
+                    help="tell Zotero to re-upload the file on the next sync")
+    sp.add_argument("--cap", type=int, default=400, help="max heading candidates in a scan")
+    sp.add_argument("--samples", type=int, default=20, help="rows to print per section of a scan")
 
     sp = add("collections", read.cmd_collections, "list collections (read API)")
     sp.add_argument("--limit", type=int, default=100)

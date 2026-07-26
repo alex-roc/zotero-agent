@@ -7,7 +7,10 @@ simple, safe, and dependency-light are very welcome.
 ## Ground rules
 
 - **Core stays stdlib-only.** The `zotero_agent` core must not add runtime
-  dependencies. Anything heavier goes behind an optional extra (like `[mcp]`).
+  dependencies. Anything heavier goes behind an optional extra — today `[mcp]`
+  (the MCP server) and `[toc]` (PyMuPDF, for `zot toc`). Reach the optional
+  dependency through one guard function and import it nowhere else, so the rest
+  of the package stays importable, and testable, without it.
 - **Writes are guarded.** New write commands must respect `confirm_write` (refuse
   non-interactive runs without `--yes`) and, where sensible, support `--dry-run`
   and snapshot for `zot undo`.
@@ -24,9 +27,19 @@ uvx ruff check src tests                  # lint
 uv build                                  # build wheel + sdist
 ```
 
-The tests use a fake in-process Zotero server (`tests/fake_zotero.py`), so they
-run without Zotero. For a real end-to-end check against your own library, set
-`ZOT_LIVE=1` and run `zot ping` with Zotero open.
+Needs Python 3.10+. The tests use a fake in-process Zotero server
+(`tests/fake_zotero.py`), so they run without Zotero. For a real end-to-end check
+against your own library, set `ZOT_LIVE=1` and run `zot ping` with Zotero open.
+
+The PDF tests skip unless PyMuPDF is present, so run them with it at least once
+before touching `src/zotero_agent/pdf/`:
+
+```bash
+uv pip install pymupdf && python3 -m unittest discover -s tests
+```
+
+To point your installed `zot` at the checkout (with the PDF engine) instead of
+the PyPI release: `uv tool install --force --editable . --with pymupdf`.
 
 ## Making a change
 
