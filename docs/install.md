@@ -28,6 +28,28 @@ installing it later is fine. Note that PyMuPDF is a multi-megabyte binary wheel 
 that, not licensing, is why it is not a hard dependency (this project is
 AGPL-3.0, the same licence).
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew install alex-roc/tap/zotero-agent
+```
+
+That single command is the whole CLI: unlike the uv/pipx routes, the formula
+ships **both extras**, so `zot mcp` and `zot toc` work immediately. It has to —
+Homebrew replaces a keg wholesale on every upgrade, so anything added to it
+afterwards would vanish at the next `brew upgrade`. Expect ~35 MB of downloads
+and ~100 MB installed, most of it PyMuPDF.
+
+```bash
+brew upgrade zotero-agent    # the CLI; the Zotero plugin updates itself
+```
+
+The formula is generated from the sdist each release publishes to PyPI and
+mirrored into [the tap](https://github.com/alex-roc/homebrew-tap) as part of that
+release, which also installs and tests it on macOS before you see it. It can
+therefore trail a fresh release by a few minutes, but it can never disagree with
+one. If you want a new version the moment it lands, use `uv tool upgrade`.
+
 The package also carries the agent surfaces (skill, `AGENTS.md`) — see
 [The agent skill](#the-agent-skill) below; no clone needed for those either.
 
@@ -121,6 +143,7 @@ The CLI and the plugin are released together and share a version number.
 
 ```bash
 uv tool upgrade zotero-agent      # the CLI (or: pipx upgrade zotero-agent)
+brew upgrade zotero-agent         # if you installed it with Homebrew
 ```
 
 If `zot --version` still reports the old one, uv is serving cached index
@@ -190,6 +213,7 @@ It completes subcommand names and the global flags; no extra dependency.
 
    ```bash
    uv tool uninstall zotero-agent          # or: pipx uninstall zotero-agent
+   brew uninstall zotero-agent             # if you installed it with Homebrew
    rm ~/.local/bin/zot ~/.claude/skills/zotero   # the ./install.sh dev symlinks
    ```
 

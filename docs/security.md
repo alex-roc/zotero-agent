@@ -74,6 +74,12 @@ its trust chain is HTTPS plus this repo:
   hash does not match, so a swapped file at the download URL cannot be installed.
 - The bridge is ~200 lines of JS you can read before installing, and `zot ping`
   reports the running plugin's version so you can tell what is actually loaded.
+- The CLI's **Homebrew** route pins everything it installs: the formula carries the
+  `sha256` of the PyPI sdist, and every dependency comes from an embedded
+  hash-pinned lock installed with `pip --require-hashes`, so a file swapped on PyPI
+  fails the install. The formula itself is generated in this repo and mirrored into
+  the tap, so the tap is a second repository you trust exactly as much as this one
+  — it publishes no artifact of its own.
 
 ## Residual risk & guidance
 

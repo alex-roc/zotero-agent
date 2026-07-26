@@ -34,7 +34,8 @@ Prefer MCP? Register `zot mcp` as a server:
 claude mcp add zotero-agent -- zot mcp
 ```
 
-Install the MCP extra first (`uv tool install "zotero-agent[mcp]"`) and verify
+Install the MCP extra first (`uv tool install "zotero-agent[mcp]"` — a Homebrew
+install already includes it) and verify
 with `zot ping`. See the [MCP overview](/zotero-agent/ai-agents/mcp/) for the
 tool list and safety notes.
 

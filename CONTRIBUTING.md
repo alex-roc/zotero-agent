@@ -94,8 +94,44 @@ git commit -am "release: X.Y.Z" && git tag vX.Y.Z && git push --follow-tags
 
 The tag triggers `.github/workflows/release.yml`, which builds the wheel + the
 XPI, publishes the GitHub Release (versioned **and** stable asset names),
-publishes to PyPI, and re-commits `updates.json` with the released XPI's
-`update_hash`. CI fails if `updates.json` lags the package version.
+publishes to PyPI, and re-commits **two** manifests: `updates.json` with the
+released XPI's `update_hash`, and `packaging/homebrew/zotero-agent.rb` with the
+published sdist's `sha256`. CI fails if either lags the package version.
+
+Then hand the formula to the tap — **this step is the mechanism, not a shortcut**.
+The tap does not poll (the formula only changes at a release); it has a weekly
+schedule purely as a net for a release where this was forgotten:
+
+```bash
+gh workflow run sync.yml --repo alex-roc/homebrew-tap
+```
+
+It runs on your own `gh` credentials, which is why no token is stored anywhere.
+Watch it: the run installs and `brew test`s the formula on macOS, and that is the
+only place `brew install` is actually exercised.
+
+## The Homebrew route
+
+Nothing about the formula is edited by hand — `url` and `sha256` come from the
+sdist the release published, because hatchling sdists are not byte-identical
+across machines, so the hash is only knowable after CI builds it.
+
+What you *do* touch is the dependency lock, and only when `pyproject.toml`'s
+dependencies change:
+
+```bash
+python scripts/gen_homebrew_formula.py --relock             # after a pyproject change
+python scripts/gen_homebrew_formula.py --relock --upgrade   # deliberately take newer extras
+```
+
+`--relock` keeps the existing pins (uv only moves them with `--upgrade`), which is
+why CI can regenerate and diff without turning into noise every time `mcp`
+releases. The lock is what makes `brew install` deliver `zot mcp` and `zot toc`:
+the formula installs the package with `--no-deps` and takes everything else from
+the lock, which the generator **embeds into the formula**. So a `--relock` without
+regenerating the formula fails `--check`, and `tests/test_homebrew.py` fails if an
+extra pyproject offers is missing from the lock. See `dev-docs/03-releasing.md` for
+the tap itself.
 
 ## Reporting bugs / requesting features
 

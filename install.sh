@@ -4,15 +4,16 @@
 #
 #   1. symlink zot              -> ~/.local/bin/zot   (dev shim; uses ./src)
 #   2. `zot skill install --link` -> ~/.claude/skills/zotero
-#   3. build the bridge XPI     -> dist/  (+ bundle into skill/scripts/ for sharing)
+#   3. build the bridge XPI     -> dist/  (the same artifact a release publishes)
 #   4. run `zot init`           (token + config + profile/userID detection)
 #   5. print the plugin install steps
 #
-# Steps 2 and 3 are the CLI's own `zot skill install` / `zot plugin build`, so a
-# from-checkout install exercises exactly what a PyPI user runs.
+# Step 2 is the CLI's own `zot skill install` and step 3 is `plugin/build.sh`, so a
+# from-checkout install exercises exactly what a released user gets.
 #
 # For a plain install (no checkout), prefer:  uv tool install zotero-agent
-# (add the MCP server with:  uv tool install "zotero-agent[mcp]").
+# (add the MCP server with:  uv tool install "zotero-agent[mcp]"), or
+# brew install alex-roc/tap/zotero-agent, which includes both extras.
 #
 # It never edits Zotero prefs or restarts Zotero without asking.
 
