@@ -10,8 +10,8 @@ class ZoteroAgent < Formula
 
   desc "Local read-write control of a Zotero library, from your terminal or AI agent"
   homepage "https://github.com/alex-roc/zotero-agent"
-  url "https://files.pythonhosted.org/packages/source/z/zotero-agent/zotero_agent-0.4.0.tar.gz"
-  sha256 "55f5e86e6177a0beecd7e05786115199a8b1ce967917c063bff51ae9be663a95"
+  url "https://files.pythonhosted.org/packages/source/z/zotero-agent/zotero_agent-0.5.0.tar.gz"
+  sha256 "c50896be4329b26c7a4633e3c6dbbd3b2bceda03c4635ba15b59ded23583fe8e"
   license "AGPL-3.0-or-later"
 
   depends_on "python@3.14"
