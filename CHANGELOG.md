@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-26
+
 ### Fixed
 - **The Homebrew formula pointed at a PyPI URL that 404s for a fresh release.**
   `/packages/source/z/zotero-agent/…` redirects to the real download path, but it is
