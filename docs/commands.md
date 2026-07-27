@@ -1,6 +1,6 @@
 # Command reference
 
-_Auto-generated from the `zot` CLI (v0.4.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.5.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 

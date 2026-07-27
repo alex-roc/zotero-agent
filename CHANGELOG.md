@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-26
+
 ### Added
 - **`zot ping` now reports which install answered**, and `zot --version` marks a
   checkout as `(dev)`. Two copies of the same version — an editable install and a

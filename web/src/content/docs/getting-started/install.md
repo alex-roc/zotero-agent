@@ -112,9 +112,9 @@ A healthy `zot ping` looks like this:
 $ zot ping
 Zotero local API : up (HTTP 200)
 bridge endpoint  : up (/zotero-agent, 1+1 == 2)
-bridge plugin    : 0.4.0
+bridge plugin    : 0.5.0
 userID           : 2960998
-zot version      : 0.4.0
+zot version      : 0.5.0
 zot source       : ~/.local/share/uv/tools/zotero-agent/lib/python3.13/site-packages/zotero_agent
 ```
 
