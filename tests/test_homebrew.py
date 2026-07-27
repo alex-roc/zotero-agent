@@ -43,6 +43,23 @@ class TestFormula(unittest.TestCase):
         self.assertLessEqual(tuple(int(p) for p in floor.groups()),
                              tuple(int(p) for p in gen.PYTHON_PIN.split(".")))
 
+    def test_url_is_pypis_real_path_not_the_source_alias(self):
+        """`/packages/source/z/zotero-agent/…` 404s for a freshly published release —
+        the tap's macOS job hit it minutes after 0.5.0 went out. PyPI's real path is
+        the file's blake2b-256 digest, so the generator derives it from the artifact
+        it is already hashing: no API call, nothing to propagate."""
+        formula = _read(os.path.join("packaging", "homebrew", "zotero-agent.rb"))
+        url = re.search(r'^  url "(.+)"$', formula, re.M).group(1)
+        self.assertNotIn("/packages/source/", url)
+        self.assertRegex(url, r"/packages/[0-9a-f]{2}/[0-9a-f]{2}/[0-9a-f]{60}/zotero_agent-")
+
+    def test_url_is_derived_from_the_blake2b_digest(self):
+        digest = "eabc3f7f5804ab4b581792f3e868405239056aec5f3c7f61c7614fb284564ce7"
+        self.assertEqual(
+            gen.sdist_url("0.5.0", digest),
+            "https://files.pythonhosted.org/packages/ea/bc/"
+            "3f7f5804ab4b581792f3e868405239056aec5f3c7f61c7614fb284564ce7/zotero_agent-0.5.0.tar.gz")
+
     def test_formula_and_lock_name_the_same_interpreter(self):
         formula = _read(os.path.join("packaging", "homebrew", "zotero-agent.rb"))
         self.assertIn('depends_on "python@%s"' % gen.PYTHON_PIN, formula)

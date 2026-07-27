@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **The Homebrew formula pointed at a PyPI URL that 404s for a fresh release.**
+  `/packages/source/z/zotero-agent/…` redirects to the real download path, but it is
+  not populated immediately: 0.5.0's `brew install` failed on it minutes after the
+  release while the real path already worked. The formula now uses that real path,
+  which is `packages/<b2[:2]>/<b2[2:4]>/<b2[4:]>/<file>` where `b2` is the file's
+  blake2b-256 digest — derived from the artifact the generator already hashes, so it
+  needs no API call and cannot lag a CDN. `--check` rejects the old alias, and
+  `--from-pypi` regenerates a formula for an already-published version.
+
+  Found by the tap's own macOS job, which is the only place `brew install` runs.
+
 ## [0.5.0] - 2026-07-26
 
 ### Added
