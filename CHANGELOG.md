@@ -6,6 +6,79 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-16
+
+### Fixed
+- **`zot add isbn` only ever tried the first translator Zotero offered, so ISBN
+  imports failed wholesale** — 73 of 73 in one batch, including *The structure of
+  scientific revolutions*, while all 34 DOI imports in the same batch worked. For an
+  ISBN the first offer is "Library of Congress ISBN", which answers nothing for most
+  books; BnF and K10plus, offers two and three, resolve them fine. DOIs never showed
+  it because CrossRef is first there. `add` now walks the whole list until one
+  returns an item, and reports what each said: `--debug` names the translator that
+  answered, and a genuine failure lists every attempt, so "no metadata for this
+  identifier" is finally distinguishable from "the service was down".
+
+- **`zot export <collection>` silently ignored subcollections.** Zotero files an
+  item in one collection at a time, so a collection whose items all live one level
+  down exported as empty — with no hint that anything had been skipped. `--recursive`
+  walks the descendants and de-duplicates items filed in several of them. For
+  bibtex/biblatex/ris it names every item key explicitly, because the read API's
+  collection endpoint cannot see past the top level either.
+
+### Changed
+- **One item shape across every command.** Reads that went through the HTTP API
+  emitted Zotero's wire format (`{data: {itemType, DOI, citationKey}}`) while reads
+  through the bridge emitted a flat record (`{type, doi, citekey}`), so a script
+  written against `export` quietly produced nothing against `get`/`search`. Both now
+  emit the flat record, and its field list is asserted against the JS mapper so the
+  two cannot drift again. `get`, `search` and `recent` take **`--raw`** when the
+  API's own format is what you want. This is a breaking change for anything reading
+  `.data.*` out of those three commands.
+
+### Added
+- **`zot attach <key> --file <path>` / `--url <url> [--link]`** — attachments for
+  items that already exist. `add --pdf` only ever covered the moment of creation, so
+  a PDF downloaded later, or a link to the publisher's page, meant hand-written
+  `zot exec` JS with nothing guarding which item it touched.
+
+- **`zot pdf-fetch <keys…> | --collection C`** — the open-access PDF lookup
+  (`Zotero.Attachments.addAvailablePDF`) applied to items already in the library,
+  which was likewise reachable only through `add --pdf`. Items that already have a
+  PDF are skipped unless `--retry-with-pdf`.
+
+- **`zot add --check-duplicate`** — resolves the metadata *without saving*, looks
+  for a close title+author match, and refuses instead of creating the duplicate.
+  Nothing warned before, and duplicates were only found later by a manual
+  `zot dedupe` pass.
+
+- **`zot restart`** — the one thing the CLI could not do was get Zotero itself back
+  up, so every plugin update ended in "restart Zotero manually". It now quits with a
+  relaunch (`Zotero.Utilities.Internal.quit(true)`), starts Zotero when it is not
+  running at all, and in both cases waits for `POST /zotero-agent` to answer before
+  returning — so the next command reaches a live bridge.
+
+  `--plugin` is the cheap variant for the common case — Zotero asking for a restart
+  to finish updating the plugin: it cycles the add-on off and on again through
+  Zotero's `AddonManager`, leaving the window open, and takes about two seconds.
+  `Addon.reload()`, the call that looks right, resolves without unloading anything
+  and is not used. The cycle runs in the *main window's* realm, because disabling
+  the plugin unloads the scope the code itself would be living in, and it confirms
+  itself with a per-run nonce written to a pref — "something answers again" would
+  also be true of a bridge that never actually reloaded.
+
+  Starting Zotero needs to know *which* Zotero: a Mac can hold `Zotero 6.app` and
+  `Zotero 7.app`, both claiming `org.zotero.zotero`, so `open -b` is a coin flip
+  between a version that has the plugin and one that cannot run it. `zot init` and
+  `zot restart` therefore ask the running instance for its own binary and record it
+  as `app` in the config, which is what the launch fallback uses.
+
+  Both defer the disruptive part to the main window's event loop so the HTTP reply
+  leaves first; without that a perfectly good restart comes back as a connection
+  error. A full restart also waits for the *old* process to let go of the port, so a
+  still-answering bridge is reported as a failed restart instead of a success. Being
+  disruptive, both prompt for confirmation and need `--yes` non-interactively.
+
 ## [0.5.1] - 2026-07-26
 
 ### Fixed
@@ -237,7 +310,10 @@ Single-user project, no back-compat shim: reinstall the bridge XPI and run
 - Initial release as `zotero-cli-skill`: `zotexec` plugin + `zot` CLI + Claude
   Code skill.
 
-[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/alex-roc/zotero-agent/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/alex-roc/zotero-agent/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/alex-roc/zotero-agent/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/alex-roc/zotero-agent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/alex-roc/zotero-agent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/alex-roc/zotero-agent/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/alex-roc/zotero-agent/compare/v0.2.0...v0.2.1
