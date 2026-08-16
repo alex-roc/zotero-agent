@@ -47,9 +47,13 @@ def build_parser():
     sp.add_argument("--all", action="store_true", help="fetch all results (paginate)")
     sp.add_argument("--item-type", dest="item_type")
     sp.add_argument("--tag")
+    sp.add_argument("--raw", action="store_true",
+                    help="emit the read API's own JSON instead of the shared flat item shape")
 
     sp = add("get", read.cmd_get, "fetch one item by Zotero key or BBT citekey")
     sp.add_argument("key", help="Zotero item key, or a BBT citekey (prefix @ to force)")
+    sp.add_argument("--raw", action="store_true",
+                    help="emit the read API's own JSON instead of the shared flat item shape")
 
     sp = add("cite", read.cmd_cite, "resolve a BBT citekey to item key + PDF path(s)")
     sp.add_argument("citekey")
@@ -90,6 +94,9 @@ def build_parser():
     sp.add_argument("collection", help="collection key or name")
     sp.add_argument("--format", choices=["json", "csv", "csljson", "bibtex", "biblatex", "ris"], default="json")
     sp.add_argument("--out", help="write to file instead of stdout")
+    sp.add_argument("--recursive", action="store_true",
+                    help="include items in subcollections (default: only items filed "
+                         "directly in this collection)")
 
     sp = add("missing", read.cmd_missing, "list items missing a field (abstract/date/doi/url/...)")
     sp.add_argument("field", help="field or alias: abstract, date, doi, url, publisher, publication")
@@ -105,6 +112,8 @@ def build_parser():
     sp.add_argument("identifier")
     sp.add_argument("--pdf", action="store_true", help="also try to attach an open-access PDF")
     sp.add_argument("--collection", help="add to this collection (key or name)")
+    sp.add_argument("--check-duplicate", dest="check_duplicate", action="store_true",
+                    help="refuse to add if a close title+author match is already in the library")
 
     sp = add("dedupe", write.cmd_dedupe, "find (and optionally merge) duplicate items")
     sp.add_argument("--by", choices=["title", "doi"], default="title")
@@ -169,8 +178,20 @@ def build_parser():
 
     sp = add("recent", read.cmd_recent, "list recently added items")
     sp.add_argument("--limit", type=int, default=20)
+    sp.add_argument("--raw", action="store_true",
+                    help="emit the read API's own JSON instead of the shared flat item shape")
 
     add("sync", admin.cmd_sync, "trigger a Zotero sync (needs a sync account)")
+
+    sp = add("restart", admin.cmd_restart,
+             "restart Zotero (or reload just the bridge plugin) and wait for it to come back")
+    sp.add_argument("--plugin", action="store_true",
+                    help="reload only the zotero-agent plugin, leaving Zotero running")
+    sp.add_argument("--no-launch", dest="no_launch", action="store_true",
+                    help="never start the Zotero app; only act on a running one")
+    sp.add_argument("--timeout", type=int, default=admin.RESTART_TIMEOUT,
+                    help="seconds to wait for the bridge to answer again (default: %d)"
+                         % admin.RESTART_TIMEOUT)
 
     sp = add("related", read.cmd_related, "list items related to an item")
     sp.add_argument("key")
@@ -185,6 +206,19 @@ def build_parser():
     sp.add_argument("--if-not-exists", dest="if_not_exists", action="store_true",
                     help="skip if an identical note already exists (idempotent)")
     sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="show what would be added, don't write")
+
+    sp = add("attach", write.cmd_attach, "attach a file, snapshot or link to an existing item")
+    sp.add_argument("key", help="item key, or a BBT citekey (prefix @ to force)")
+    sp.add_argument("--file", help="local file to import as an attachment")
+    sp.add_argument("--url", help="URL to attach (a snapshot unless --link)")
+    sp.add_argument("--link", action="store_true", help="store the URL as a link, not a snapshot")
+    sp.add_argument("--title", help="attachment title (defaults to Zotero's)")
+
+    sp = add("pdf-fetch", write.cmd_pdf_fetch, "look for an open-access PDF for items already in the library")
+    sp.add_argument("keys", nargs="*", help="item keys or BBT citekeys; '-' reads them from stdin")
+    sp.add_argument("--collection", help="every item in a collection (key or name)")
+    sp.add_argument("--retry-with-pdf", dest="retry_with_pdf", action="store_true",
+                    help="also try items that already have a PDF attached")
 
     sp = add("backup", admin.cmd_backup, "snapshot zotero.sqlite to a timestamped file")
     sp.add_argument("--dir", help="destination dir (default: ~/.config/zotero-agent/backups)")

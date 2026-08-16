@@ -67,10 +67,28 @@ def resolve_collection_js(arg):
     ) % arg
 
 
-def collection_items_scope(arg):
-    """resolve_collection_js + bind `items` to the collection's regular items."""
+def collection_items_scope(arg, recursive=False):
+    """resolve_collection_js + bind `items` to the collection's regular items.
+
+    Zotero's own notion of "the items in a collection" stops at the collection
+    itself, which reads as an empty result for anyone who filed everything into
+    subcollections — hence `recursive`, which walks the descendants and
+    de-duplicates items filed in more than one of them.
+    """
+    if not recursive:
+        return resolve_collection_js(arg) + (
+            "var items = col.getChildItems().filter(function(i){return i.isRegularItem();});\n"
+        )
     return resolve_collection_js(arg) + (
-        "var items = col.getChildItems().filter(function(i){return i.isRegularItem();});\n"
+        "var __cols = [col].concat(col.getDescendents(false, 'collection').map(function (d) {\n"
+        "  return Zotero.Collections.get(d.id); }).filter(Boolean));\n"
+        "var __seen = {}, items = [];\n"
+        "for (var __c of __cols) {\n"
+        "  for (var __it of __c.getChildItems()) {\n"
+        "    if (!__it.isRegularItem() || __seen[__it.id]) continue;\n"
+        "    __seen[__it.id] = 1; items.push(__it);\n"
+        "  }\n"
+        "}\n"
     )
 
 

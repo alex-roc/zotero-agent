@@ -146,9 +146,11 @@ def serve(cli_args):
         return _run(read.cmd_collections, all=True)
 
     @mcp.tool()
-    def get_collection_items(collection: str) -> dict:
-        """List the items in a collection (by key or name)."""
-        return _run(read.cmd_export, collection=collection, format="json", out=None)
+    def get_collection_items(collection: str, recursive: bool = False) -> dict:
+        """List the items in a collection (by key or name). Zotero files items in
+        one collection at a time, so pass recursive=True to include subcollections."""
+        return _run(read.cmd_export, collection=collection, format="json", out=None,
+                    recursive=recursive)
 
     @mcp.tool()
     def library_stats() -> dict:
@@ -166,10 +168,28 @@ def serve(cli_args):
         return _run(read.cmd_author, name=name, detail="concise")
 
     @mcp.tool()
-    def create_item(kind: str, identifier: str, collection: str = "", attach_pdf: bool = False) -> dict:
-        """Add an item by identifier. kind is 'doi', 'isbn' or 'arxiv'."""
+    def create_item(kind: str, identifier: str, collection: str = "", attach_pdf: bool = False,
+                    check_duplicate: bool = False) -> dict:
+        """Add an item by identifier. kind is 'doi', 'isbn' or 'arxiv'. With
+        check_duplicate, refuse when a close title+author match already exists."""
         return _run(write.cmd_add, kind=kind, identifier=identifier,
-                    collection=collection or None, pdf=attach_pdf)
+                    collection=collection or None, pdf=attach_pdf,
+                    check_duplicate=check_duplicate)
+
+    @mcp.tool()
+    def attach_to_item(key: str, file: str = "", url: str = "", link: bool = False,
+                       title: str = "") -> dict:
+        """Attach a local file, a page snapshot, or a link to an existing item.
+        Give exactly one of file or url; link=True stores the URL without a snapshot."""
+        return _run(write.cmd_attach, key=key, file=file or None, url=url or None,
+                    link=link, title=title or None)
+
+    @mcp.tool()
+    def fetch_open_access_pdf(keys: list = None, collection: str = "") -> dict:
+        """Look for an open-access PDF for items already in the library, and attach
+        what it finds. Items that already have a PDF are skipped."""
+        return _run(write.cmd_pdf_fetch, keys=keys or [], collection=collection or None,
+                    retry_with_pdf=False)
 
     @mcp.tool()
     def update_items(edits: list) -> dict:

@@ -33,7 +33,7 @@ SECTIONS = [
     ("Edit & organize", ["add", "dedupe", "tag", "set", "move", "collection", "note"]),
     ("PDF outlines", ["toc"]),
     ("Batch (undoable)", ["apply", "undo", "enrich"]),
-    ("Setup & escape hatch", ["ping", "init", "skill", "backup", "sync",
+    ("Setup & escape hatch", ["ping", "init", "skill", "backup", "sync", "restart",
                               "exec", "mcp", "completion"]),
 ]
 

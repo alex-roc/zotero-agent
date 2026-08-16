@@ -3,6 +3,9 @@
 Config lives in ~/.config/zotero-agent/config.json:
     { "token": "...", "userID": 2960998, "base": "http://localhost:23119" }
 
+`app` (the Zotero binary, recorded by `zot init` / `zot restart` from the running
+instance) may also be present; it is what lets `zot restart` start Zotero again.
+
 The same file is read by the bridge plugin, so rotating the token needs no
 Zotero restart. Resolution precedence: flags > env (ZOTERO_AGENT_*) > file > default.
 """

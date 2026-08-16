@@ -36,6 +36,12 @@ Run `zot ping`. It must show the local API up, the bridge endpoint answering
 `1+1 == 2`, a known userID, and the `zot` version. If anything fails, point the
 user to `references/setup.md` — do **not** try to work around a missing plugin.
 
+If Zotero is simply not running, or the plugin needs the restart Zotero keeps
+asking for, `zot restart` handles it without the user touching the app — it waits
+for the bridge to answer again. It is disruptive, so ask first and then pass
+`--yes`: `zot restart --plugin --yes` reloads only the bridge (Zotero stays
+open), `zot restart --yes` restarts Zotero, and with Zotero down it starts it.
+
 > Beyond this skill (Claude Code), `zot mcp` exposes the same operations as an
 > MCP server for Claude Desktop, Codex CLI, Gemini CLI and Cursor. See the repo's
 > `docs/` and website for per-client setup; the safety rules below apply equally.
@@ -64,6 +70,7 @@ the abstract-search one). Reads/analysis:
 
 ```bash
 zot export <collection|name> --format json|csv|csljson|bibtex|biblatex|ris [--out f]
+zot export <collection|name> --recursive                # + items in subcollections
 zot missing abstract|date|doi|url [--collection KEY]   # items lacking a field
 zot author "Ojeda"                                      # items by an author
 zot stats                                               # library analytics
@@ -80,6 +87,9 @@ Editing & organizing (these are **writes** — see safety below):
 
 ```bash
 zot add doi|isbn|arxiv <id> [--pdf] [--collection C]    # import by identifier
+zot add isbn <id> --check-duplicate                     # refuse if already there
+zot attach <key> --file <path> | --url <url> [--link]   # attach to an existing item
+zot pdf-fetch <key…> | --collection C                   # find an open-access PDF
 zot dedupe [--collection C] [--merge]                   # find/merge duplicates
 zot tag add|rm <tag> <key…>   |   tag rename <old> --new <n>   |   tag purge
 zot set <field> <value> <key…>                          # edit a field
@@ -108,6 +118,21 @@ values, write the JSONL, and `zot apply` writes them — the CLI never calls an 
 `zot missing` uses the reliable `getField` check, not the empty-string search
 condition (which silently returns 0 — see recipes.md). Use `exec` only for
 operations these commands don't cover.
+
+**One item shape.** Every command that emits items in `--json` uses the same flat
+record — `key, citekey, type, title, date, year, creators, venue, doi, url, tags,
+abstract` — whether it reads through the HTTP API or the bridge. `get`, `search`
+and `recent` take `--raw` when you specifically want Zotero's own wire format
+(`{data:{itemType, DOI, citationKey}}`); everything else should use the flat one.
+
+**Collections are not recursive.** `zot export C` and `zot missing --collection C`
+see only the items filed directly in C — a collection whose items all live in
+subcollections looks empty. Pass `--recursive` to `export` when that matters.
+
+**Bibliographies: use `zot export --format biblatex`.** It goes through Zotero's
+native exporter. Better BibTeX keeps a separate export cache that can hold stale
+citekeys and is not invalidated by regenerating keys or restarting Zotero, so
+anything routed through BBT's `item.export` may disagree with `zot get`.
 
 **Global flags** (all commands): `--json` (machine output), `-q/--quiet`,
 `--debug`, `--yes` (confirm writes non-interactively), and config overrides

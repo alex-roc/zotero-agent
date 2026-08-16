@@ -4,49 +4,167 @@ import json
 import re
 import sys
 
-from ..constants import EXIT_NOTFOUND
-from ..http import run_js
-from ..jslib import field_name, scope_js
+from ..constants import EXIT_GENERIC, EXIT_NOTFOUND
+from ..http import is_loopback, run_js
+from ..jslib import collection_items_scope, field_name, scope_js
 from ..output import dump_json
 from ..resolve import keys_from, resolve_key
-from ..term import confirm_write, die, info
+from ..term import confirm_write, debug, die, info
+
+# Every translator Zotero offers for the identifier, tried in turn. Taking only
+# translators[0] is why ISBN imports failed wholesale: for an ISBN the first
+# offer is "Library of Congress ISBN", which answers nothing for most books,
+# while BnF and K10plus (offers 2 and 3) resolve them fine. DOIs never showed the
+# bug because CrossRef is first there.
+_TRANSLATE_JS = r"""
+var identifier = %(identifier)s, kind = %(kind)s, colArg = %(collection)s;
+var wantPdf = %(pdf)s, checkDup = %(check_dup)s;
+var ident = {};
+if (kind === 'doi') ident.DOI = identifier;
+else if (kind === 'isbn') ident.ISBN = identifier;
+else if (kind === 'arxiv') ident.arXiv = identifier;
+else return { error: 'unsupported kind: ' + kind + ' (use doi/isbn/arxiv)' };
+
+function fresh(tr) {
+  var t = new Zotero.Translate.Search();
+  t.setIdentifier(ident);
+  if (tr) t.setTranslator(tr);
+  return t;
+}
+
+var translators = await fresh(null).getTranslators();
+if (!translators || !translators.length) {
+  return { added: [], attempts: [], error_detail: 'no translator handles this ' + kind };
+}
+
+async function attempt(opts) {
+  var attempts = [];
+  for (var tr of translators) {
+    try {
+      var got = await fresh(tr).translate(opts);
+      if (got && got.length) return { items: got, translator: tr.label, attempts: attempts };
+      attempts.push({ translator: tr.label, error: 'no items returned' });
+    } catch (e) {
+      attempts.push({ translator: tr.label, error: String(e && e.message ? e.message : e) });
+    }
+  }
+  return { items: null, attempts: attempts };
+}
+
+function norm(t) { return String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+function sim(a, b) {
+  if (a === b) return 1;
+  var la = a.length, lb = b.length;
+  if (!la || !lb) return 0;
+  var d = [];
+  for (var i = 0; i <= la; i++) d[i] = [i];
+  for (var j = 0; j <= lb; j++) d[0][j] = j;
+  for (var i = 1; i <= la; i++) for (var j = 1; j <= lb; j++) {
+    var c = a[i - 1] === b[j - 1] ? 0 : 1;
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+  }
+  return 1 - d[la][lb] / Math.max(la, lb);
+}
+
+// Look for something close enough that adding would duplicate it. Searching by
+// the first words of the title keeps this cheap enough to run before every add.
+async function findDuplicate(title, lastName) {
+  var words = norm(title).split(' ').filter(function (w) { return w.length > 2; }).slice(0, 4);
+  if (!words.length) return null;
+  var s = new Zotero.Search();
+  s.libraryID = Zotero.Libraries.userLibraryID;
+  s.addCondition('itemType', 'isNot', 'attachment');
+  s.addCondition('itemType', 'isNot', 'note');
+  s.addCondition('title', 'contains', words.join(' '));
+  var ids = await s.search();
+  var candidates = ids.length ? await Zotero.Items.getAsync(ids) : [];
+  var target = norm(title);
+  for (var it of candidates) {
+    if (sim(target, norm(it.getField('title'))) < %(threshold)s) continue;
+    if (lastName) {
+      var match = it.getCreators().some(function (c) {
+        return norm(c.lastName || c.name || '') === norm(lastName);
+      });
+      if (!match) continue;
+    }
+    return { key: it.key, title: it.getField('title'), date: it.getField('date'), type: it.itemType };
+  }
+  return null;
+}
+
+if (checkDup) {
+  // Resolve the metadata without saving, so a duplicate is caught before it exists.
+  var probe = await attempt({ libraryID: false });
+  if (!probe.items) return { added: [], attempts: probe.attempts };
+  var meta = probe.items[0] || {};
+  var first = (meta.creators || [])[0] || {};
+  var dup = await findDuplicate(meta.title || '', first.lastName || first.name || '');
+  if (dup) return { added: [], attempts: probe.attempts, duplicate: dup,
+                    candidate: { title: meta.title, translator: probe.translator } };
+}
+
+var opts = { libraryID: Zotero.Libraries.userLibraryID };
+if (colArg) {
+  var col = await Zotero.Collections.getByLibraryAndKey(Zotero.Libraries.userLibraryID, colArg)
+    || Zotero.Collections.getByLibrary(Zotero.Libraries.userLibraryID, true)
+        .find(function (c) { return c.name === colArg; });
+  if (col) opts.collections = [col.id];
+}
+var run = await attempt(opts);
+if (!run.items) return { added: [], attempts: run.attempts };
+
+var out = [];
+for (var it of run.items) {
+  var rec = { key: it.key, title: it.getField('title'), type: it.itemType, pdf: null };
+  if (wantPdf) {
+    try {
+      var att = await Zotero.Attachments.addAvailablePDF(it);
+      if (att) rec.pdf = 'attached';
+    } catch (e) { rec.pdfError = String(e); }
+  }
+  out.push(rec);
+}
+return { added: out, translator: run.translator, attempts: run.attempts };
+"""
+
+DUP_THRESHOLD = 0.9
 
 
 def cmd_add(args):
     from ..config import require_config
     cfg = require_config(args)
-    code = (
-        "var identifier = %r, kind = %r, colArg = %r, wantPdf = %s;\n"
-        "var translate = new Zotero.Translate.Search();\n"
-        "var ident = {};\n"
-        "if (kind === 'doi') ident.DOI = identifier;\n"
-        "else if (kind === 'isbn') ident.ISBN = identifier;\n"
-        "else if (kind === 'arxiv') ident.arXiv = identifier;\n"
-        "else return { error: 'unsupported kind: ' + kind + \" (use doi/isbn/arxiv)\" };\n"
-        "translate.setIdentifier(ident);\n"
-        "var translators = await translate.getTranslators();\n"
-        "if (!translators || !translators.length) return { error: 'no metadata found for ' + kind + ' ' + identifier };\n"
-        "translate.setTranslator(translators[0]);\n"
-        "var opts = { libraryID: Zotero.Libraries.userLibraryID };\n"
-        "if (colArg) { var col = await Zotero.Collections.getByLibraryAndKey(Zotero.Libraries.userLibraryID, colArg)"
-        " || Zotero.Collections.getByLibrary(Zotero.Libraries.userLibraryID, true).find(function(c){return c.name===colArg;});"
-        " if (col) opts.collections = [col.id]; }\n"
-        "var items = await translate.translate(opts);\n"
-        "var out = [];\n"
-        "for (var it of items) {\n"
-        "  var rec = { key: it.key, title: it.getField('title'), type: it.itemType, pdf: null };\n"
-        "  if (wantPdf) { try { var att = await Zotero.Attachments.addAvailablePDF(it); if (att) rec.pdf = 'attached'; } catch (e) { rec.pdfError = String(e); } }\n"
-        "  out.push(rec);\n"
-        "}\n"
-        "return { added: out };"
-    ) % (args.identifier, args.kind, args.collection or "", "true" if args.pdf else "false")
+    check_dup = getattr(args, "check_duplicate", False)
+    code = _TRANSLATE_JS % {
+        "identifier": json.dumps(args.identifier),
+        "kind": json.dumps(args.kind),
+        "collection": json.dumps(args.collection or ""),
+        "pdf": "true" if args.pdf else "false",
+        "check_dup": "true" if check_dup else "false",
+        "threshold": DUP_THRESHOLD,
+    }
     res = run_js(cfg, code, label="add")
     added = res.get("added", [])
+    attempts = res.get("attempts", [])
+    for a in attempts:
+        debug("translator %s: %s" % (a.get("translator"), a.get("error")))
     if args.json:
         dump_json(res)
         return
+    dup = res.get("duplicate")
+    if dup:
+        die("already in the library: %s %s (%s, %s) — re-run without "
+            "--check-duplicate to add it anyway"
+            % (dup["key"], (dup.get("title") or "")[:60], dup.get("type"), dup.get("date") or "n/d"),
+            code=EXIT_GENERIC)
     if not added:
-        die("nothing added", code=EXIT_NOTFOUND)
+        # Which translators were tried, and what each said: the difference between
+        # "this identifier has no metadata" and "the service was down".
+        detail = "; ".join("%s: %s" % (a.get("translator"), a.get("error")) for a in attempts)
+        die("nothing added for %s %s — %s" % (args.kind, args.identifier,
+                                              detail or res.get("error_detail") or "no translator handled it"),
+            code=EXIT_NOTFOUND)
+    if res.get("translator"):
+        debug("resolved by translator: %s" % res["translator"])
     for a in added:
         pdf = "  [PDF %s]" % a["pdf"] if a.get("pdf") else ("  [PDF failed]" if a.get("pdfError") else "")
         print("Added %-10s %-14s %s%s" % (a["key"], a["type"], (a["title"] or "")[:60], pdf))
@@ -216,3 +334,116 @@ def cmd_note(args):
         info("An identical note already exists on %s; skipped." % res["parent"])
         return
     print("Added note %s to item %s" % (res["noteKey"], res["parent"]))
+
+
+# --------------------------------------------------------------------------- #
+# attachments on items that already exist
+# --------------------------------------------------------------------------- #
+_ATTACH_JS = r"""
+var key = %(key)s, source = %(source)s, mode = %(mode)s, title = %(title)s;
+var parent = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, key);
+if (!parent) return { error: 'item not found: ' + key };
+if (!parent.isRegularItem()) return { error: key + ' is not a regular item (cannot hold attachments)' };
+var opts = { parentItemID: parent.id };
+if (title) opts.title = title;
+var att;
+if (mode === 'file') { opts.file = source; att = await Zotero.Attachments.importFromFile(opts); }
+else if (mode === 'link') { opts.url = source; att = await Zotero.Attachments.linkFromURL(opts); }
+else { opts.url = source; att = await Zotero.Attachments.importFromURL(opts); }
+return { attachmentKey: att.key, parent: parent.key, parentTitle: parent.getField('title'),
+         mode: mode, path: att.getFilePath ? att.getFilePath() : null };
+"""
+
+
+def cmd_attach(args):
+    """Attach a local file, a snapshot, or a link to an item that already exists.
+
+    `add --pdf` only ever covered the moment of creation, which left the common
+    case — a PDF downloaded later, a link to the publisher's page — to hand-written
+    `zot exec` JS with no guard on the item it touched.
+    """
+    import os
+
+    from ..config import require_config
+    cfg = require_config(args)
+    if bool(args.file) == bool(args.url):
+        die("give exactly one of --file or --url")
+    key = resolve_key(cfg, args.key)
+    if args.file:
+        source = os.path.abspath(os.path.expanduser(args.file))
+        # Zotero reads the path, not us — but when it runs on this machine (the
+        # normal case) a missing file is worth catching before the round-trip.
+        if is_loopback(cfg) and not os.path.exists(source):
+            die("file not found: %s" % source, code=EXIT_NOTFOUND)
+        mode, what = "file", source
+    else:
+        source = args.url
+        mode, what = ("link" if args.link else "snapshot"), source
+    confirm_write(args, "This attaches %s to item %s." % (what, key))
+    res = run_js(cfg, _ATTACH_JS % {
+        "key": json.dumps(key), "source": json.dumps(source),
+        "mode": json.dumps(mode), "title": json.dumps(args.title or ""),
+    }, label="attach")
+    if args.json:
+        dump_json(res)
+        return
+    print("Attached %s (%s) to %s %s" % (res["attachmentKey"], res["mode"], res["parent"],
+                                         (res.get("parentTitle") or "")[:50]))
+
+
+# --------------------------------------------------------------------------- #
+# open-access PDF lookup for items already in the library
+# --------------------------------------------------------------------------- #
+_PDF_FETCH_JS = r"""
+var keys = %(keys)s, skipWithPdf = %(skip)s;
+var out = [];
+for (var key of keys) {
+  var it = await Zotero.Items.getByLibraryAndKeyAsync(Zotero.Libraries.userLibraryID, key);
+  if (!it) { out.push({ key: key, status: 'not-found' }); continue; }
+  if (skipWithPdf) {
+    var has = it.getAttachments().map(function (id) { return Zotero.Items.get(id); })
+      .some(function (a) { return a.attachmentContentType === 'application/pdf'; });
+    if (has) { out.push({ key: key, title: it.getField('title'), status: 'has-pdf' }); continue; }
+  }
+  try {
+    var att = await Zotero.Attachments.addAvailablePDF(it);
+    out.push({ key: key, title: it.getField('title'),
+               status: att ? 'attached' : 'none', attachmentKey: att ? att.key : null });
+  } catch (e) {
+    out.push({ key: key, title: it.getField('title'), status: 'error', error: String(e).slice(0, 200) });
+  }
+}
+return { results: out };
+"""
+
+
+def cmd_pdf_fetch(args):
+    """Ask Zotero to find an open-access PDF for items already in the library.
+
+    Same resolver as `add --pdf` (`Zotero.Attachments.addAvailablePDF`), which was
+    reachable only while creating an item. Success rates are genuinely low for
+    books; the point is that the attempt no longer needs hand-written JS.
+    """
+    from ..config import require_config
+    cfg = require_config(args)
+    if args.collection:
+        keys = run_js(cfg, collection_items_scope(args.collection) +
+                      "return items.map(function (i) { return i.key; });", label="pdf-fetch")
+    else:
+        keys = [resolve_key(cfg, k) for k in keys_from(args.keys)]
+    if not keys:
+        die("no items to look up", code=EXIT_NOTFOUND)
+    confirm_write(args, "This downloads and attaches PDFs to %d item(s)." % len(keys))
+    res = run_js(cfg, _PDF_FETCH_JS % {
+        "keys": json.dumps(keys), "skip": "false" if args.retry_with_pdf else "true",
+    }, label="pdf-fetch", timeout=max(120, 20 * len(keys)))
+    results = res.get("results", [])
+    if args.json:
+        dump_json(res)
+        return
+    counts = {}
+    for r in results:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+        if r["status"] in ("attached", "error"):
+            print("%-10s %-9s %s" % (r["key"], r["status"], (r.get("title") or "")[:55]))
+    print("\n%s" % ", ".join("%d %s" % (n, s) for s, n in sorted(counts.items())))

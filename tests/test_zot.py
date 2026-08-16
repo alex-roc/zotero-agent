@@ -22,6 +22,7 @@ from fake_zotero import FakeZotero  # noqa: E402
 from zotero_agent import assets, audit, cli, http, jslib, resolve  # noqa: E402
 from zotero_agent.commands import admin, features, read, write  # noqa: E402
 from zotero_agent.constants import VERSION  # noqa: E402
+from zotero_agent.http import is_loopback  # noqa: E402
 from zotero_agent.term import ZotError, set_verbosity  # noqa: E402
 
 set_verbosity(quiet=True)
@@ -38,7 +39,7 @@ class TestParser(unittest.TestCase):
         for cmd in ["search", "get", "add", "dedupe", "tag", "set", "move",
                     "collection", "annotations", "stats", "bib", "export",
                     "note", "backup", "lint", "exec", "ping", "init",
-                    "apply", "undo", "enrich", "mcp"]:
+                    "apply", "undo", "enrich", "mcp", "restart"]:
             args = parser.parse_args([cmd] + _dummy_args(cmd))
             self.assertTrue(callable(args.func), "%s has no func" % cmd)
 
@@ -422,7 +423,7 @@ class TestReadmeCommandTable(unittest.TestCase):
             readme = fh.read()
         table = re.search(r"### Commands at a glance\n(.*?)(?=\n#{2,3} )", readme, re.S)
         self.assertIsNotNone(table, "the 'Commands at a glance' table is gone")
-        listed = set(re.findall(r"`([a-z]+)`", table.group(1)))
+        listed = set(re.findall(r"`([a-z][a-z-]*)`", table.group(1)))   # hyphens: pdf-fetch
 
         parser = cli.build_parser()
         sub = [a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction"][0]
@@ -466,6 +467,13 @@ class TestVersionIsSingleSourced(unittest.TestCase):
         """Both must name the same file, or the plugin polls a manifest nobody writes."""
         manifest = json.loads(self._read("plugin", "zotero-agent-bridge", "manifest.json"))
         self.assertTrue(manifest["applications"]["zotero"]["update_url"].endswith("/updates.json"))
+
+    def test_plugin_id_matches_the_manifest(self):
+        """`zot restart --plugin` asks Zotero's AddonManager for this exact ID; a
+        drift here would look like "the plugin is not installed"."""
+        from zotero_agent.constants import PLUGIN_ID
+        manifest = json.loads(self._read("plugin", "zotero-agent-bridge", "manifest.json"))
+        self.assertEqual(manifest["applications"]["zotero"]["id"], PLUGIN_ID)
 
 
 class TestPluginVersionReporting(unittest.TestCase):
@@ -530,6 +538,382 @@ class TestPluginVersionReporting(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("bridge plugin", out)
         self.assertIn("9.9.9", out)
+
+
+class TestOneItemShape(unittest.TestCase):
+    """Reads through the HTTP API used to emit Zotero's wire format while reads
+    through the bridge emitted a flat record, so a script written against one
+    silently found nothing in the other. Both now speak the same shape."""
+
+    API_ITEM = {
+        "key": "AAAA1111",
+        "data": {
+            "key": "AAAA1111", "itemType": "journalArticle", "title": "On Paradigms",
+            "date": "2019-04-01", "DOI": "10.1234/x", "url": "https://example.org",
+            "citationKey": "smith2019", "abstractNote": "An abstract.",
+            "publicationTitle": "Journal of Things",
+            "creators": [{"firstName": "Jane", "lastName": "Smith", "creatorType": "author"},
+                         {"name": "Some Institute", "creatorType": "contributor"}],
+            "tags": [{"tag": "epistemology"}, {"tag": "review"}],
+        },
+    }
+
+    def test_api_item_maps_onto_the_shared_field_names(self):
+        from zotero_agent.output import flatten_item
+        flat = flatten_item(self.API_ITEM)
+        self.assertEqual(flat["type"], "journalArticle")     # not itemType
+        self.assertEqual(flat["doi"], "10.1234/x")           # not DOI
+        self.assertEqual(flat["citekey"], "smith2019")       # not citationKey
+        self.assertEqual(flat["year"], "2019")
+        self.assertEqual(flat["creators"], ["Jane Smith", "Some Institute"])
+        self.assertEqual(flat["tags"], ["epistemology", "review"])
+        self.assertEqual(flat["venue"], "Journal of Things")
+
+    def test_the_keys_match_the_javascript_mapper_exactly(self):
+        """`export` builds its records in JS (jslib.ITEM_MAP) and `get`/`search`
+        build them here; a field added to one and not the other reopens the bug."""
+        from zotero_agent.output import flatten_item
+        expected = {"key", "citekey", "type", "title", "date", "year", "creators",
+                    "venue", "doi", "url", "tags", "abstract"}
+        self.assertEqual(set(flatten_item(self.API_ITEM)), expected)
+        for field in expected:
+            self.assertRegex(jslib.ITEM_MAP, r"\b%s:" % field,
+                             "%s is missing from the JS mapper" % field)
+
+    def test_venue_falls_back_through_the_container_fields(self):
+        from zotero_agent.output import flatten_item
+        self.assertEqual(flatten_item({"data": {"bookTitle": "A Reader"}})["venue"], "A Reader")
+        self.assertEqual(flatten_item({"data": {"publisher": "FCE"}})["venue"], "FCE")
+        self.assertEqual(flatten_item({"data": {}})["venue"], "")
+
+    def test_get_emits_the_flat_shape_and_raw_opts_out(self):
+        with FakeZotero(token="t", item=self.API_ITEM) as srv:
+            common = dict(key="AAAA1111", base=srv.base, token="t", user_id=1, json=True)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                read.cmd_get(_args(**common))
+            flat = json.loads(buf.getvalue())
+            self.assertEqual(flat["type"], "journalArticle")
+            self.assertNotIn("data", flat)
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                read.cmd_get(_args(raw=True, **common))
+            raw = json.loads(buf.getvalue())
+            self.assertEqual(raw["data"]["itemType"], "journalArticle")
+
+    def test_search_json_is_flat_too(self):
+        with FakeZotero(token="t", lists={"items": [self.API_ITEM]}, totals={"items": 1}) as srv:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                read.cmd_search(_args(query="x", base=srv.base, token="t", user_id=1, json=True))
+            self.assertEqual(json.loads(buf.getvalue())[0]["citekey"], "smith2019")
+
+
+class TestRecursiveExport(unittest.TestCase):
+    def test_recursive_scope_walks_descendants_and_dedupes(self):
+        js = jslib.collection_items_scope("COLKEY", recursive=True)
+        self.assertIn("getDescendents(false, 'collection')", js)
+        self.assertIn("__seen", js, "an item filed in two subcollections must appear once")
+        self.assertNotIn("getDescendents", jslib.collection_items_scope("COLKEY"))
+
+    def test_raw_formats_name_every_key_when_recursive(self):
+        """The collection endpoint cannot see into subcollections, so a recursive
+        bibtex export has to list its items instead — that was the silent-empty bug."""
+        with FakeZotero(token="t", bridge_results={"getDescendents": ["K1", "K2"]}) as srv:
+            cfg = {"base": srv.base, "token": "t", "userID": 1}
+            with mock.patch("zotero_agent.config.require_config", return_value=cfg), \
+                 mock.patch.object(read, "api_export_keys", return_value="@book{x}") as ex:
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    read.cmd_export(_args(collection="C", format="biblatex", out=None,
+                                          recursive=True, base=srv.base, token="t", user_id=1))
+            ex.assert_called_once()
+            self.assertEqual(ex.call_args[0][1], ["K1", "K2"])
+            self.assertIn("@book{x}", buf.getvalue())
+
+    def test_api_export_keys_batches_long_key_lists(self):
+        keys = ["K%03d" % i for i in range(120)]
+        with FakeZotero(token="t") as srv:
+            with mock.patch.object(http, "http_get", return_value=(200, "@book{x}")) as get:
+                text = http.api_export_keys({"base": srv.base, "userID": 1, "token": "t"},
+                                            keys, "biblatex", chunk=50)
+        self.assertEqual(get.call_count, 3)          # 50 + 50 + 20
+        self.assertEqual(text.count("@book{x}"), 3)
+
+
+class TestAddTriesEveryTranslator(unittest.TestCase):
+    """73 of 73 ISBN imports failed because only translators[0] was ever tried,
+    and for an ISBN that first offer ("Library of Congress ISBN") answers nothing
+    for most books while the next ones resolve them."""
+
+    def _run_add(self, bridge_result, **kw):
+        with FakeZotero(token="t", bridge_results={"Zotero.Translate.Search": bridge_result}) as srv:
+            args = _args(kind="isbn", identifier="9780226458120", pdf=False,
+                         collection=None, base=srv.base, token="t", user_id=1,
+                         json=False, **kw)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                write.cmd_add(args)
+            return buf.getvalue(), srv.last_code
+
+    def test_the_javascript_loops_over_all_translators(self):
+        out, code = self._run_add({"added": [{"key": "K1", "title": "T", "type": "book"}],
+                                   "translator": "BnF ISBN", "attempts": []})
+        self.assertIn("for (var tr of translators)", code)
+        self.assertNotIn("translators[0]", code)
+        self.assertIn("K1", out)
+
+    def test_failure_names_each_translator_and_what_it_said(self):
+        """"No items returned from any translator" alone cannot tell a missing
+        record from a service that was down."""
+        with self.assertRaises(ZotError) as ctx:
+            self._run_add({"added": [], "attempts": [
+                {"translator": "Library of Congress ISBN", "error": "no items returned"},
+                {"translator": "Open WorldCat", "error": "503"}]})
+        msg = str(ctx.exception)
+        self.assertIn("Library of Congress ISBN", msg)
+        self.assertIn("Open WorldCat", msg)
+        self.assertIn("503", msg)
+
+    def test_check_duplicate_refuses_before_writing(self):
+        with self.assertRaises(ZotError) as ctx:
+            self._run_add({"added": [], "attempts": [],
+                           "duplicate": {"key": "RRFAUWHD", "title": "Understanding Digital Societies",
+                                         "type": "book", "date": "2021"}},
+                          check_duplicate=True)
+        self.assertIn("already in the library", str(ctx.exception))
+        self.assertIn("RRFAUWHD", str(ctx.exception))
+
+    def test_the_duplicate_probe_resolves_metadata_without_saving(self):
+        _, code = self._run_add({"added": [{"key": "K1", "title": "T", "type": "book"}],
+                                 "attempts": []}, check_duplicate=True)
+        self.assertIn("libraryID: false", code, "the probe must not save the item it resolves")
+
+    def test_no_duplicate_check_by_default(self):
+        _, code = self._run_add({"added": [{"key": "K1", "title": "T", "type": "book"}],
+                                 "attempts": []})
+        self.assertIn("checkDup = false", code)
+
+
+class TestAttach(unittest.TestCase):
+    """`add --pdf` only covered creation; attaching to an item that already exists
+    meant hand-written `zot exec` JS with nothing guarding the target."""
+
+    def _attach(self, **kw):
+        with FakeZotero(token="t", bridge_results={"Zotero.Attachments": {
+                "attachmentKey": "ATT00001", "parent": "AAAA1111",
+                "parentTitle": "On Paradigms", "mode": kw.get("_mode", "file")}}) as srv:
+            kw.pop("_mode", None)
+            args = _args(key="AAAA1111", base=srv.base, token="t", user_id=1,
+                         json=False, yes=True, **kw)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                write.cmd_attach(args)
+            return buf.getvalue(), srv.last_code
+
+    def test_file_import(self):
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+            path = fh.name
+        try:
+            out, code = self._attach(file=path, url=None, link=False, title=None)
+        finally:
+            os.unlink(path)
+        self.assertIn("importFromFile", code)
+        self.assertIn("ATT00001", out)
+
+    def test_url_is_a_snapshot_unless_link_is_given(self):
+        _, code = self._attach(file=None, url="https://example.org", link=False, title=None,
+                               _mode="snapshot")
+        self.assertIn("mode = \"snapshot\"", code)
+        _, code = self._attach(file=None, url="https://example.org", link=True, title=None,
+                               _mode="link")
+        self.assertIn("mode = \"link\"", code)
+
+    def test_exactly_one_source_is_required(self):
+        for kw in ({"file": None, "url": None}, {"file": "a", "url": "b"}):
+            with self.assertRaises(ZotError) as ctx:
+                self._attach(link=False, title=None, **kw)
+            self.assertIn("exactly one", str(ctx.exception))
+
+    def test_a_missing_local_file_is_caught_before_the_round_trip(self):
+        with self.assertRaises(ZotError) as ctx:
+            self._attach(file="/definitely/not/here.pdf", url=None, link=False, title=None)
+        self.assertIn("file not found", str(ctx.exception))
+
+
+class TestPdfFetch(unittest.TestCase):
+    def test_summarises_per_status_and_skips_items_that_have_one(self):
+        results = {"results": [
+            {"key": "AAAA1111", "title": "A", "status": "attached", "attachmentKey": "T1"},
+            {"key": "BBBB2222", "title": "B", "status": "none"},
+            {"key": "CCCC3333", "title": "C", "status": "has-pdf"},
+            {"key": "DDDD4444", "title": "D", "status": "error", "error": "boom"}]}
+        with FakeZotero(token="t", bridge_results={"addAvailablePDF": results}) as srv:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                write.cmd_pdf_fetch(_args(keys=["AAAA1111", "BBBB2222", "CCCC3333", "DDDD4444"], collection=None,
+                                          retry_with_pdf=False, base=srv.base, token="t",
+                                          user_id=1, json=False, yes=True))
+            out, code = buf.getvalue(), srv.last_code
+        self.assertIn("skipWithPdf = true", code)
+        self.assertIn("1 attached", out)
+        self.assertIn("1 error", out)
+        self.assertIn("1 has-pdf", out)
+        self.assertNotIn("CCCC3333", out, "items that already have a PDF are counted, not listed")
+
+    def test_retry_with_pdf_stops_skipping(self):
+        with FakeZotero(token="t", bridge_results={"addAvailablePDF": {"results": []}}) as srv:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                write.cmd_pdf_fetch(_args(keys=["AAAA1111"], collection=None, retry_with_pdf=True,
+                                          base=srv.base, token="t", user_id=1, json=False, yes=True))
+            self.assertIn("skipWithPdf = false", srv.last_code)
+
+
+class TestRestart(unittest.TestCase):
+    """`zot restart` is the one command that deliberately kills its own transport,
+    so what is worth testing is the waiting: it must see the bridge go away and
+    come back, and never report success from the *old* process still answering."""
+
+    CFG = {"base": "http://localhost:23119", "token": "t", "userID": 1}
+    UP = {"ok": True, "result": 2, "version": "9.9.9"}
+    DOWN = {"ok": False, "error": "cannot reach http://localhost:23119 (refused)"}
+
+    def _run(self, probes, **kw):
+        """Drive cmd_restart with a scripted sequence of bridge replies.
+
+        `timeout=0` keeps the waits to a single probe each, so a test can script
+        exactly the sequence it means to exercise.
+        """
+        kw = {"json": False, "yes": False, "timeout": 0, **kw}
+        patches = mock.patch.multiple(
+            admin,
+            post_code=mock.DEFAULT, run_js=mock.DEFAULT, _launch_zotero=mock.DEFAULT,
+            remember_exe=mock.DEFAULT,
+        )
+        with mock.patch("zotero_agent.config.require_config", return_value=self.CFG), \
+             mock.patch.object(admin, "SHUTDOWN_TIMEOUT", 0), \
+             mock.patch.object(admin.time, "sleep"), patches as m:
+            m["post_code"].side_effect = list(probes)
+            m["run_js"].return_value = {"scheduled": True}
+            m["_launch_zotero"].return_value = "open -a Zotero"
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                admin.cmd_restart(_args(**kw))
+            return buf.getvalue(), m
+
+    def test_restart_asks_zotero_to_quit_then_waits_for_it_to_return(self):
+        out, m = self._run([self.UP, self.DOWN, self.UP], yes=True)
+        sent = m["run_js"].call_args[0][1]
+        self.assertIn("Zotero.Utilities.Internal.quit(true)", sent)
+        self.assertIn("setTimeout", sent, "the quit must be deferred past the HTTP reply")
+        self.assertIn("Bridge is back", out)
+        self.assertIn("9.9.9", out)
+        m["_launch_zotero"].assert_not_called()
+
+    def test_a_bridge_that_never_goes_down_is_a_failed_restart(self):
+        """The old process answering is not the new one: reporting success there
+        would tell the user a restart happened when nothing did."""
+        with self.assertRaises(ZotError) as ctx:
+            self._run([self.UP, self.UP], yes=True)
+        self.assertIn("did not shut down", str(ctx.exception))
+
+    def test_it_launches_zotero_when_the_bridge_is_down(self):
+        out, m = self._run([self.DOWN, self.UP])
+        m["_launch_zotero"].assert_called_once()
+        m["run_js"].assert_not_called()      # nothing to quit
+        self.assertIn("Bridge is back", out)
+
+    def test_a_restart_that_never_comes_back_falls_back_to_launching(self):
+        """`quit(true)` normally relaunches; if it does not, the user must not be
+        left with no Zotero at all."""
+        out, m = self._run([self.UP, self.DOWN, self.DOWN, self.UP], yes=True)
+        m["_launch_zotero"].assert_called_once()
+        self.assertIn("Bridge is back", out)
+
+    def test_restart_needs_confirmation(self):
+        with self.assertRaises(ZotError) as ctx:
+            self._run([self.UP, self.DOWN, self.UP])
+        self.assertIn("--yes", str(ctx.exception))
+
+    def test_plugin_reload_waits_for_its_own_nonce(self):
+        """Only the reloaded plugin can report back this run's nonce; "something
+        is answering" would also be true of the copy that never went away."""
+        # DOWN is the window where the endpoint is unregistered mid-reload, and
+        # the stale nonce is a previous run's: the command must poll through both.
+        with mock.patch.object(admin.secrets, "token_hex", return_value="deadbeef"):
+            out, m = self._run([self.UP, self.DOWN, {"ok": True, "result": "stale"},
+                                {"ok": True, "result": "deadbeef", "version": "9.9.9"},
+                                {"ok": True, "result": True}],
+                               plugin=True, yes=True, timeout=5)
+        sent = m["run_js"].call_args[0][1]
+        self.assertIn("deadbeef", sent)
+        self.assertIn("AddonManager", sent)
+        self.assertIn('"zotero-agent-bridge@zotero-agent"', sent)
+        self.assertIn("disable()", sent)
+        self.assertIn("w.eval(", sent, "the cycle must run outside the plugin's own scope")
+        self.assertIn("Bridge is back", out)
+        m["_launch_zotero"].assert_not_called()
+
+    def test_plugin_reload_does_not_accept_a_stale_nonce(self):
+        with self.assertRaises(ZotError) as ctx:
+            self._run([self.UP, {"ok": True, "result": "some-other-run"}],
+                      plugin=True, yes=True)
+        self.assertIn("did not come back", str(ctx.exception))
+
+    def test_plugin_reload_needs_a_running_zotero(self):
+        with self.assertRaises(ZotError) as ctx:
+            self._run([self.DOWN], plugin=True, yes=True)
+        self.assertIn("no plugin to reload", str(ctx.exception))
+
+    def test_a_remote_base_is_never_launched_locally(self):
+        self.assertTrue(is_loopback({"base": "http://127.0.0.1:23119"}))
+        self.assertFalse(is_loopback({"base": "http://zotero.example.org:23119"}))
+        with mock.patch("zotero_agent.config.require_config",
+                        return_value={"base": "http://zotero.example.org:23119", "token": "t"}), \
+             mock.patch.object(admin, "post_code", return_value=self.DOWN), \
+             mock.patch.object(admin, "_launch_zotero") as launch, \
+             mock.patch.object(admin.time, "sleep"):
+            with self.assertRaises(ZotError) as ctx:
+                admin.cmd_restart(_args(yes=True))
+        launch.assert_not_called()
+        self.assertIn("not this machine", str(ctx.exception))
+
+    def test_the_recorded_binary_wins_over_guessing_the_app(self):
+        """A Mac can hold `Zotero 6.app` and `Zotero 7.app` under one bundle ID, so
+        `open -b` may well start the version that cannot run the plugin."""
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = os.path.join(tmp, "Zotero 7.app", "Contents", "MacOS", "zotero")
+            os.makedirs(os.path.dirname(exe))
+            open(exe, "w").close()
+            cmd = admin._launch_command({"app": exe})
+        if sys.platform == "darwin":
+            self.assertEqual(cmd[:2], ["open", "-a"])
+            self.assertTrue(cmd[2].endswith("Zotero 7.app"), cmd)
+        else:
+            self.assertEqual(cmd, [exe])
+        # A path that no longer exists must not be trusted (app moved/uninstalled).
+        self.assertNotIn("/gone/zotero", admin._launch_command({"app": "/gone/zotero"}) or [])
+
+    def test_the_binary_is_recorded_while_zotero_is_still_up(self):
+        exe = sys.executable   # any path that exists
+        saved = {}
+        with mock.patch.object(admin, "post_code", return_value={"ok": True, "result": exe}), \
+             mock.patch("zotero_agent.config.save_config", saved.update):
+            self.assertEqual(admin.remember_exe({"base": "b", "token": "t"}), exe)
+        self.assertEqual(saved.get("app"), exe)
+
+    def test_no_launch_refuses_instead_of_starting_zotero(self):
+        with self.assertRaises(ZotError) as ctx:
+            self._run([self.DOWN], no_launch=True, yes=True)
+        self.assertIn("--no-launch", str(ctx.exception))
+
+    def test_json_output(self):
+        out, _ = self._run([self.UP, self.DOWN, self.UP], yes=True, json=True)
+        payload = json.loads(out)
+        self.assertEqual(payload["action"], "restart")
+        self.assertEqual(payload["plugin"], "9.9.9")
 
 
 if __name__ == "__main__":

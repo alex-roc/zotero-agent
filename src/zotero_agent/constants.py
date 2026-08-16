@@ -11,6 +11,16 @@ TOKEN_HEADER = "X-Zotero-Agent-Token"
 TOKEN_PREF = "extensions.zotero-agent.token"
 ENV_PREFIX = "ZOTERO_AGENT"  # ZOTERO_AGENT_BASE / _TOKEN / _USER_ID
 
+# The bridge plugin's add-on ID, as declared in plugin/.../manifest.json. Needed
+# to reach it through Zotero's AddonManager (see `zot restart --plugin`);
+# tests/test_zot.py keeps the two copies in sync.
+PLUGIN_ID = "zotero-agent-bridge@zotero-agent"
+
+# macOS fallback for starting Zotero when the config has no recorded binary.
+# Both Zotero 6 and 7 claim it, which is why the recorded path wins (see
+# admin.remember_exe).
+ZOTERO_BUNDLE_ID = "org.zotero.zotero"
+
 CONFIG_DIR = os.path.expanduser("~/.config/zotero-agent")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 STATE_DIR = os.path.expanduser("~/.local/state/zotero-agent")

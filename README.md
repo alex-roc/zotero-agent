@@ -120,10 +120,10 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 | Group | Commands |
 |-------|----------|
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
-| **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` |
+| **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` `attach` `pdf-fetch` |
 | **PDF outlines** | `toc` (show/scan/set/auto/clear) — needs the `[toc]` extra |
 | **Batch (undoable)** | `apply` `undo` `enrich` |
-| **Setup / escape** | `ping` `init` `skill` `backup` `sync` `exec` `mcp` `completion` |
+| **Setup / escape** | `ping` `init` `skill` `backup` `sync` `restart` `exec` `mcp` `completion` |
 
 ### Batch edits are undoable
 

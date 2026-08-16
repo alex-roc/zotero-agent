@@ -1,6 +1,6 @@
 # Command reference
 
-_Auto-generated from the `zot` CLI (v0.5.1) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.6.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 
@@ -11,7 +11,7 @@ Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--ba
 ```
 zot search [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
                   [--debug] [-y] [--json] [--limit LIMIT] [--all]
-                  [--item-type ITEM_TYPE] [--tag TAG]
+                  [--item-type ITEM_TYPE] [--tag TAG] [--raw]
                   query
 ```
 
@@ -22,18 +22,20 @@ zot search [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 | `--all` | fetch all results (paginate) |
 | `--item-type` |  |
 | `--tag` |  |
+| `--raw` | emit the read API's own JSON instead of the shared flat item shape |
 
 ### `zot get`
 
 ```
 zot get [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
-               [--debug] [-y] [--json]
+               [--debug] [-y] [--json] [--raw]
                key
 ```
 
 | Argument | Description |
 |----------|-------------|
 | `key` | Zotero item key, or a BBT citekey (prefix @ to force) |
+| `--raw` | emit the read API's own JSON instead of the shared flat item shape |
 
 ### `zot cite`
 
@@ -89,7 +91,7 @@ zot tags [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 zot export [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
                   [--debug] [-y] [--json]
                   [--format {json,csv,csljson,bibtex,biblatex,ris}]
-                  [--out OUT]
+                  [--out OUT] [--recursive]
                   collection
 ```
 
@@ -98,6 +100,7 @@ zot export [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 | `collection` | collection key or name |
 | `--format` |  |
 | `--out` | write to file instead of stdout |
+| `--recursive` | include items in subcollections (default: only items filed directly in this collection) |
 
 ### `zot missing`
 
@@ -138,12 +141,13 @@ zot stats [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 
 ```
 zot recent [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
-                  [--debug] [-y] [--json] [--limit LIMIT]
+                  [--debug] [-y] [--json] [--limit LIMIT] [--raw]
 ```
 
 | Argument | Description |
 |----------|-------------|
 | `--limit` |  |
+| `--raw` | emit the read API's own JSON instead of the shared flat item shape |
 
 ### `zot bib`
 
@@ -218,6 +222,7 @@ zot lint [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 ```
 zot add [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
                [--debug] [-y] [--json] [--pdf] [--collection COLLECTION]
+               [--check-duplicate]
                {doi,isbn,arxiv} identifier
 ```
 
@@ -227,6 +232,7 @@ zot add [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 | `identifier` |  |
 | `--pdf` | also try to attach an open-access PDF |
 | `--collection` | add to this collection (key or name) |
+| `--check-duplicate` | refuse to add if a close title+author match is already in the library |
 
 ### `zot dedupe`
 
@@ -448,6 +454,20 @@ zot sync [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
                 [--debug] [-y] [--json]
 ```
 
+### `zot restart`
+
+```
+zot restart [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+                   [--debug] [-y] [--json] [--plugin] [--no-launch]
+                   [--timeout TIMEOUT]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `--plugin` | reload only the zotero-agent plugin, leaving Zotero running |
+| `--no-launch` | never start the Zotero app; only act on a running one |
+| `--timeout` | seconds to wait for the bridge to answer again (default: 90) |
+
 ### `zot exec`
 
 ```
@@ -483,3 +503,37 @@ zot completion [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID]
 | Argument | Description |
 |----------|-------------|
 | `shell` |  |
+
+## Other
+
+### `zot attach`
+
+```
+zot attach [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+                  [--debug] [-y] [--json] [--file FILE] [--url URL] [--link]
+                  [--title TITLE]
+                  key
+```
+
+| Argument | Description |
+|----------|-------------|
+| `key` | item key, or a BBT citekey (prefix @ to force) |
+| `--file` | local file to import as an attachment |
+| `--url` | URL to attach (a snapshot unless --link) |
+| `--link` | store the URL as a link, not a snapshot |
+| `--title` | attachment title (defaults to Zotero's) |
+
+### `zot pdf-fetch`
+
+```
+zot pdf-fetch [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID]
+                     [-q] [--debug] [-y] [--json] [--collection COLLECTION]
+                     [--retry-with-pdf]
+                     [keys ...]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `keys` | item keys or BBT citekeys; '-' reads them from stdin |
+| `--collection` | every item in a collection (key or name) |
+| `--retry-with-pdf` | also try items that already have a PDF attached |

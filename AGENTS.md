@@ -10,6 +10,11 @@ Run `zot ping`. It must show the local API up, the bridge endpoint answering
 `1+1 == 2`, and a known userID. If it fails, the bridge plugin isn't installed —
 see `docs/install.md`; do **not** work around it.
 
+If Zotero is closed, or the plugin wants the restart Zotero keeps asking for,
+`zot restart --yes` handles it (`--plugin` reloads only the bridge, leaving
+Zotero open) and waits for the endpoint to answer again. Ask the user first: a
+restart can lose unsaved work in Zotero.
+
 ## Reading (fast, prefer these)
 
 ```bash
@@ -21,14 +26,22 @@ zot stats                       # analytics
 zot missing abstract|date|doi [--collection C]
 zot author "<name>"  |  zot recent  |  zot lint
 zot toc show|scan <KEY>         # a PDF's table of contents (needs the [toc] extra)
+zot export <COLLECTION> --recursive   # collections do NOT include subcollections by default
 ```
 
-Add `--json` to any command for machine-readable output.
+Add `--json` to any command for machine-readable output. Items always come back
+in one flat shape (`key, citekey, type, title, date, year, creators, venue, doi,
+url, tags, abstract`); `get`/`search`/`recent` take `--raw` for Zotero's own
+`{data:{itemType, DOI, citationKey}}` format. For bibliographies prefer
+`zot export --format biblatex` (native exporter) over anything that goes through
+Better BibTeX's export cache, which can serve stale citekeys.
 
 ## Writing (guarded — pass `--yes` for non-interactive)
 
 ```bash
-zot add doi|isbn|arxiv <id> [--pdf] [--collection C]
+zot add doi|isbn|arxiv <id> [--pdf] [--collection C] [--check-duplicate]
+zot attach <KEY> --file <PATH> | --url <URL> [--link]   # attach to an existing item
+zot pdf-fetch <KEY…> | --collection C                   # open-access PDF lookup
 zot set <field> <value> <KEY…> --yes
 zot tag add|rm <tag> <KEY…> --yes   |   zot tag rename <old> --new <n> --yes
 zot move <collection> <KEY…> --yes

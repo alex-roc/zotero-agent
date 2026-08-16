@@ -181,6 +181,20 @@ The gear menu belongs to the plugin *list*; it is not in a plugin's detail pane
 (where "Allow automatic updates" lives — leaving that on *Default* is correct).
 Then run `zot ping`: `bridge plugin` and `zot version` should match.
 
+If Zotero asks for a restart to finish the update, you do not have to leave the
+terminal:
+
+```bash
+zot restart --plugin   # reload just the bridge; Zotero stays open
+zot restart            # restart Zotero itself
+```
+
+Both wait until `POST /zotero-agent` answers again and then print the plugin
+version, so whatever you run next will reach a live bridge. `zot restart` also
+starts Zotero when it is not running at all (`--no-launch` if you would rather it
+did not). Being disruptive, both prompt for confirmation — scripts and agents
+must pass `--yes`.
+
 If Zotero does not offer the update, ask it directly what it sees:
 
 ```bash

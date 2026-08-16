@@ -162,8 +162,21 @@ detail pane only has "Allow automatic updates" (leave it on *Default*). If you a
 looking at Zotero Agent Bridge's details, go back first.
 :::
 
-Then run `zot ping`: `bridge plugin` and `zot version` should agree. If Zotero
-never offers the update, see the troubleshooting snippet in
+Then run `zot ping`: `bridge plugin` and `zot version` should agree.
+
+If Zotero asks for a restart to finish the update, the CLI can do it for you:
+
+```bash
+zot restart --plugin   # reload just the bridge; Zotero stays open
+zot restart            # restart Zotero itself
+```
+
+Both wait until the bridge answers again and print the plugin version, so the
+next command reaches a live endpoint. `zot restart` also starts Zotero when it is
+not running (`--no-launch` opts out). Both are disruptive, so they ask for
+confirmation — pass `--yes` in scripts.
+
+If Zotero never offers the update, see the troubleshooting snippet in
 [`docs/install.md`](https://github.com/alex-roc/zotero-agent/blob/main/docs/install.md#updating),
 which asks Zotero's own AddonManager what it sees.
 

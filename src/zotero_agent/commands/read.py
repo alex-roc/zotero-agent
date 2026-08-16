@@ -7,6 +7,7 @@ import json
 from ..constants import EXIT_NOTFOUND
 from ..http import (
     api_export_all,
+    api_export_keys,
     api_list,
     api_url,
     bbt_rpc,
@@ -21,7 +22,7 @@ from ..jslib import (
     resolve_collection_js,
     scope_js,
 )
-from ..output import dump_json, print_items, project, write_or_print
+from ..output import dump_json, flatten_item, print_items, project, write_or_print
 from ..resolve import resolve_key
 from ..term import die, info
 
@@ -35,7 +36,7 @@ def cmd_search(args):
     if args.tag:
         params["tag"] = args.tag
     items, total = api_list(cfg, "items", params, args.all, args.limit)
-    print_items(items, args.json)
+    print_items(items, args.json, getattr(args, "raw", False))
     if not args.json:
         truncation_notice(len(items), total, args.all)
 
@@ -47,7 +48,7 @@ def cmd_get(args):
     _, body = http_get(api_url(cfg, "items/" + key))
     data = json.loads(body)
     if args.json:
-        dump_json(data)
+        dump_json(data if getattr(args, "raw", False) else flatten_item(data))
     else:
         d = data.get("data", data)
         for k, v in d.items():
@@ -156,18 +157,26 @@ def cmd_export(args):
     from ..config import require_config
     cfg = require_config(args)
     fmt = args.format
+    recursive = getattr(args, "recursive", False)
     if fmt in ("bibtex", "biblatex", "ris"):
-        # resolve to a collection key, then page the read API's native exporter
-        # (never truncating — the old code capped at limit=100).
-        key = run_js(cfg, resolve_collection_js(args.collection) + "return col.key;", label="export")
-        text, total = api_export_all(cfg, "collections/%s/items/top" % key, fmt)
+        if recursive:
+            # Name every item explicitly: the collection endpoint cannot see into
+            # subcollections, so it would silently export only the top level.
+            keys = run_js(cfg, collection_items_scope(args.collection, True) +
+                          "return items.map(function (i) { return i.key; });", label="export")
+            text = api_export_keys(cfg, keys, fmt)
+            total = len(keys)
+        else:
+            # resolve to a collection key, then page the read API's native exporter
+            # (never truncating — the old code capped at limit=100).
+            key = run_js(cfg, resolve_collection_js(args.collection) + "return col.key;", label="export")
+            text, total = api_export_all(cfg, "collections/%s/items/top" % key, fmt)
         write_or_print(args.out, text)
         if args.out and total is not None:
             info("Wrote %d items (%s) to %s" % (total, fmt, args.out))
         return
     if fmt == "csljson":
-        code = resolve_collection_js(args.collection) + (
-            "var items = col.getChildItems().filter(function(i){return i.isRegularItem();});\n"
+        code = collection_items_scope(args.collection, recursive) + (
             "return items.map(function(it){ return Zotero.Utilities.Item.itemToCSLJSON"
             "  ? Zotero.Utilities.Item.itemToCSLJSON(it) : Zotero.Utilities.itemToCSLJSON(it); });"
         )
@@ -177,7 +186,7 @@ def cmd_export(args):
             info("Wrote %d items (CSL-JSON) to %s" % (len(data), args.out))
         return
     # json / csv: build structured data via the JS API
-    code = ITEM_MAP + collection_items_scope(args.collection) + (
+    code = ITEM_MAP + collection_items_scope(args.collection, recursive) + (
         "return { collection: col.name, key: col.key, items: items.map(mapItem) };"
     )
     res = run_js(cfg, code, label="export")
@@ -357,7 +366,7 @@ def cmd_recent(args):
     cfg = require_config(args)
     params = {"sort": "dateAdded", "direction": "desc"}
     items, _ = api_list(cfg, "items/top", params, False, args.limit)
-    print_items(items, args.json)
+    print_items(items, args.json, getattr(args, "raw", False))
 
 
 def cmd_lint(args):

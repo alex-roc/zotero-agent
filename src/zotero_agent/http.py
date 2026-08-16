@@ -12,6 +12,14 @@ from .constants import ENDPOINT_PATH, EXIT_CONN, EXIT_NOTFOUND, TOKEN_HEADER
 from .term import die
 
 
+def is_loopback(cfg):
+    """Is `base` this machine? `--base` can point at a tunnel or another host, and
+    anything that acts locally (starting Zotero, reading a file path) must not
+    assume otherwise."""
+    host = (urllib.parse.urlparse(cfg["base"]).hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1")
+
+
 def http_get(url, timeout=30):
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -123,6 +131,20 @@ def api_export_all(cfg, path, fmt, extra_params=None):
         if total is None or start >= total:
             break
     return "\n".join(p.strip("\n") for p in parts if p.strip()), total
+
+
+def api_export_keys(cfg, keys, fmt, chunk=50):
+    """Export an explicit set of item keys in a raw `fmt`, in URL-sized batches.
+
+    The collection endpoint only knows about items filed directly in one
+    collection, so a recursive export has to name its items instead.
+    """
+    parts = []
+    for start in range(0, len(keys), chunk):
+        batch = keys[start:start + chunk]
+        _, body = http_get(api_url(cfg, "items", {"itemKey": ",".join(batch), "format": fmt}))
+        parts.append(body)
+    return "\n".join(p.strip("\n") for p in parts if p.strip())
 
 
 def truncation_notice(shown, total, want_all):
