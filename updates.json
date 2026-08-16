@@ -10,7 +10,8 @@
               "strict_min_version": "7.0",
               "strict_max_version": "10.*"
             }
-          }
+          },
+          "update_hash": "sha256:5f6b5b842fea3bcaff7e8537ea17ad58d85cf39782ee1ebb8110aee13dc3e2c0"
         }
       ]
     }
