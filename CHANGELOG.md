@@ -6,6 +6,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-17
+
+### Added
+- **`zot pdf-prep` — scanned books become searchable without leaving the item.**
+  A book scanned on a flatbed arrives as one landscape page per *pair* of printed
+  pages with no text layer: it cannot be searched, cited from, or read by an
+  agent, and `zot toc` had nothing to work with (it printed an `ocrmypdf` command
+  and gave up). The new command analyses the file, splits two-up scans into single
+  pages, adds a text layer with OCR, and shrinks the result — Bowles,
+  *Introducción a la economía*: 147 two-up pages at 200 dpi → 294 pages,
+  24.7 MB → 16.4 MB, searchable, in under three minutes.
+
+  The split is what usually needs a human with Briss, because the binding is
+  never exactly centred. `pdf-prep` measures the ink profile of sampled pages and
+  applies the **median** cut of the ones with enough ink to be informative — on a
+  near-blank page the "widest gap" lands anywhere, so a per-page cut eventually
+  slices a chapter opening in half. Each half keeps a sliver past the cut, so the
+  ±2% a real binding wanders never clips a letter. `--gutter` forces the cut,
+  `--single` leaves covers and fold-outs whole, `--rtl` handles right-to-left books.
+
+  Nothing is discarded by default: the result is attached *beside* the original
+  and tagged `pdf-prep`, so re-running a collection skips what it already did.
+  `--replace` trashes the original as it goes and `--prune` does it afterwards,
+  so a large library does not end up holding two copies of every book. OCR
+  language comes from the item's own `language` field.
+
+  Both trashing paths **refuse an original that carries highlights**. Zotero
+  anchors annotations to the attachment and to coordinates on a page, so they
+  cannot follow a file whose pages have just been split in two: trashing the
+  original would take the user's reading with it. `--trash-annotated` overrides.
+  Removals go to the trash, never `eraseTx`.
+
+  Splitting needs the `[toc]` extra, already present for `zot toc`; OCR needs
+  OCRmyPDF, and `--no-ocr` works without it.
+
+### Changed
+- `zot pdf --json` also reports each attachment's tags, and the item's language.
+  Both were already in Zotero; `pdf-prep` needs them to recognise its own output
+  and to pick an OCR language, and no command should have to fetch an item twice.
+
 ## [0.6.0] - 2026-08-16
 
 ### Fixed
