@@ -42,6 +42,8 @@ SHARED_FACTS = {
         (r"loopback", "loopback-only binding"),
         (r"extensions\.zotero-agent\.token", "the pref that overrides the token"),
         (r"--require-hashes", "what the Homebrew route pins"),
+        (r"pdf-prep", "the one command that runs an external program"),
+        (r"--trash-annotated", "annotations do not follow the processed file"),
     ],
     "install": [
         (r"releases/latest/download/zotero-agent-bridge\.xpi", "permanent XPI link"),
@@ -53,6 +55,9 @@ SHARED_FACTS = {
         (r"uv tool uninstall", "how to uninstall the CLI"),
         (r"zotero-agent\[toc\]", "the extra that enables zot toc"),
         (r"pymupdf", "what the toc extra pulls in"),
+        (r"ocrmypdf", "the external program zot pdf-prep needs for OCR"),
+        (r"tesseract-lang|tesseract-ocr-", "the language packs OCR needs to be correct"),
+        (r"--no-ocr", "how to run pdf-prep without OCRmyPDF installed"),
         (r"brew install alex-roc/tap/zotero-agent", "the Homebrew route"),
         (r"brew upgrade zotero-agent", "how the Homebrew install is updated"),
         (r"command -v zot", "which install wins when two routes are present"),

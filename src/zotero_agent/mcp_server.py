@@ -19,7 +19,7 @@ import os
 from contextlib import redirect_stdout
 
 from . import __version__
-from .commands import features, read, toc, write
+from .commands import features, prep, read, toc, write
 from .term import ZotError, set_verbosity
 
 _DEFAULTS = dict(
@@ -28,6 +28,16 @@ _DEFAULTS = dict(
     limit=25, all=False, detail="concise", samples=1000, format="json",
     collection=None, item_type=None, tag=None,
     max_level=4, cap=400,
+)
+
+# `zot pdf-prep` reads more knobs than a tool call should have to spell out, and
+# an unset one is not harmless here: overlap and timeout are arithmetic, so None
+# would raise rather than fall back.
+_PREP_DEFAULTS = dict(
+    overlap=0.008, timeout=3600, single=None, rtl=False, rotate=False,
+    no_ocr=False, force=False, replace=False, prune=False, out=None,
+    trash_annotated=False,
+    title=None, attachment=None, split="auto", profile="balanced",
 )
 
 
@@ -139,6 +149,37 @@ def serve(cli_args):
                         max_level=max_level)
         finally:
             os.unlink(path)
+
+    @mcp.tool()
+    def analyze_pdf_scan(key: str) -> dict:
+        """Report whether an item's PDF is a scan, and how it would be prepared.
+
+        Reads nothing into the library and changes nothing. `hasText: false`
+        means the file is page images: it cannot be searched, quoted or
+        summarized until prepare_pdf_scan has run. `doublePage: true` means one
+        landscape page holds two printed pages, and `gutter` is where the fold
+        is, as a fraction of page width.
+        """
+        return _run(prep.cmd_pdf_prep, keys=[key], **_PREP_DEFAULTS, dry_run=True)
+
+    @mcp.tool()
+    def prepare_pdf_scan(key: str, ocr: str = None, profile: str = "balanced",
+                         split: str = "auto", gutter: float = None) -> dict:
+        """Split, OCR and shrink an item's scanned PDF; attach the result to the item.
+
+        Slow — roughly half a second per page, so a book takes minutes. Call
+        analyze_pdf_scan first and tell the user what it will do.
+
+        The processed PDF is attached *beside* the original and tagged
+        `pdf-prep`; the original is kept, and calling this again on the same
+        item is a no-op. `ocr` is a tesseract language string ("spa", "spa+eng")
+        and defaults to the item's own language field. `profile` is balanced,
+        quality (300 dpi OCR, larger file) or small. `split` is auto, always or
+        never; `gutter` forces the cut as a fraction of page width.
+        """
+        return _run(prep.cmd_pdf_prep, keys=[key],
+                    **{**_PREP_DEFAULTS, "profile": profile, "split": split},
+                    ocr=ocr, gutter=gutter)
 
     @mcp.tool()
     def list_collections() -> dict:

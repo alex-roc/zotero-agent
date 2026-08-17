@@ -48,12 +48,18 @@ account, no API key, no cloud.
     it — from the book's own contents page where there is one, from typography
     where there isn't — and writes it into the file.
   </Card>
+  <Card title="Scanned books, made usable" icon="document">
+    A book scanned two pages at a time cannot be searched, cited or read by an
+    agent. `zot pdf-prep` finds the fold, splits it into single pages, OCRs it
+    and shrinks it — 24.7 MB and unsearchable to 16.4 MB and searchable, without
+    the file leaving the item.
+  </Card>
 </CardGrid>
 
 ## Quickstart
 
 ```bash
-uv tool install "zotero-agent[mcp,toc]"   # the CLI, + MCP server, + PDF outlines
+uv tool install "zotero-agent[mcp,toc]"   # the CLI, + MCP server, + the PDF tools
 # or, on macOS/Linux:  brew install alex-roc/tap/zotero-agent   (extras included)
 # then install the bridge plugin XPI: Tools -> Plugins -> gear -> Install Plugin From File
 zot init                               # generate a token, detect your userID

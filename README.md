@@ -122,6 +122,7 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
 | **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` `attach` `pdf-fetch` |
 | **PDF outlines** | `toc` (show/scan/set/auto/clear) — needs the `[toc]` extra |
+| **Scanned PDFs** | `pdf-prep` (split double pages, OCR, shrink) — needs `[toc]` + OCRmyPDF |
 | **Batch (undoable)** | `apply` `undo` `enrich` |
 | **Setup / escape** | `ping` `init` `skill` `backup` `sync` `restart` `exec` `mcp` `completion` |
 
@@ -169,6 +170,45 @@ and the body restarts at 1, so a single offset is wrong for half the book.
 Same loop from an agent: `zot toc scan --json` hands over the evidence, the model
 decides the hierarchy, `zot toc set --from -` writes it. Writes are guarded by
 `--yes`, previewable with `--dry-run`, and reversible with `zot undo`.
+
+### Make a scanned book usable
+
+A book scanned on a flatbed arrives as one landscape page per *pair* of printed
+pages, with no text layer: you cannot search it, cite from it, or let an agent
+read it, and it is several times larger than it needs to be. `zot pdf-prep` does
+the whole pass — split, OCR, shrink — without the file leaving the item.
+
+```bash
+brew install ocrmypdf tesseract-lang unpaper jbig2enc   # apt: ocrmypdf tesseract-ocr-spa unpaper
+zot pdf-prep @bowlesIntroduccionEconomia --dry-run   # what it sees, what it would do
+zot pdf-prep @bowlesIntroduccionEconomia             # split + OCR, attached beside the original
+zot pdf-prep --collection "Scans" --replace          # a whole shelf; trash each original
+zot pdf-prep --collection "Scans" --prune            # or trash the originals later, once reviewed
+```
+
+A real example — Bowles, *Introducción a la economía*, 147 two-up pages at
+200 dpi: **294 pages, 24.7 MB → 16.4 MB, searchable, in under three minutes.**
+
+The split is the part that usually needs a human with [Briss], and the reason is
+that the binding is never exactly centred. `pdf-prep` measures the ink profile of
+sampled pages, takes the **median** of the ones with enough ink to be
+informative, and applies that one cut to the whole book — the same decision a
+human makes, for the same reason: on a near-blank page the "widest gap" is
+anywhere, so a per-page cut eventually slices a chapter opening in half. Each
+half keeps a sliver past the cut, so the ±2% a real binding wanders never clips a
+letter. Pages that must stay whole (covers, fold-outs) are listed with `--single`.
+
+Nothing is thrown away by default: the processed PDF is attached **beside** the
+original and tagged `pdf-prep`, because OCR is a machine's judgement call and the
+scan is often the only copy. `--replace` trashes the original as it goes;
+`--prune` does it afterwards for items already processed, so a large library does
+not quietly end up holding two copies of every book. Both use Zotero's trash, and
+both **leave an annotated original alone**: Zotero anchors highlights to the
+attachment and to page coordinates, so they cannot follow a file whose pages have
+just been split apart (`--trash-annotated` overrides). Prepare a scan before you
+read it and the question never comes up.
+
+[Briss]: https://briss.sourceforge.net/
 
 ## Use it from an agent
 

@@ -15,6 +15,7 @@ threads. `zotero-agent` does them locally, on your own machine.
 - [Clean 500 items](/zotero-agent/cookbook/clean-500-items/) — bulk metadata edits with `zot apply` + undo.
 - [Summarize a PDF into a note](/zotero-agent/cookbook/summarize-pdf-to-note/) — read the PDF, write a child note.
 - [Give a PDF a table of contents](/zotero-agent/cookbook/pdf-table-of-contents/) — build and embed an outline so Zotero's reader can navigate it.
+- [Make a scanned book searchable](/zotero-agent/cookbook/prepare-scanned-book/) — split two-up scans, OCR them, shrink them.
 - [Bulk-tag by topic](/zotero-agent/cookbook/bulk-tag-by-topic/) — classify and tag a whole collection.
 - [Dedupe and merge](/zotero-agent/cookbook/dedupe-and-merge/) — find near-duplicate titles and merge safely.
 - [Import by identifier](/zotero-agent/cookbook/import-by-identifier/) — add items by DOI/ISBN/arXiv, with PDFs.

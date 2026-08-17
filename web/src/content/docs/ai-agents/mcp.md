@@ -59,12 +59,21 @@ Per-client instructions:
 | `undo_last` | write |
 | `get_pdf_outline`, `scan_pdf_outline` (needs the `[toc]` extra) | read |
 | `set_pdf_outline` (undoable, needs `[toc]`) | write |
+| `analyze_pdf_scan` (needs `[toc]`) | read |
+| `prepare_pdf_scan` (needs `[toc]` + OCRmyPDF) | write |
 | `run_javascript` (only with `--allow-exec`) | escape hatch |
 
 `scan_pdf_outline` returns evidence rather than an answer — the book's own
 contents page where it has one, typographic heading candidates where it does not
 — and the model decides the hierarchy before `set_pdf_outline` writes it. Without
 the extra installed, the three return the install command as an error.
+
+`analyze_pdf_scan` answers the question that has to come first with a scanned
+book: is there any text to read? It reports pages, image dpi, whether a text
+layer exists and whether the pages are two-up, and changes nothing.
+`prepare_pdf_scan` then splits, OCRs and shrinks the file, attaching the result
+beside the original — slow (roughly half a second per page), so a model should
+say what it is about to do before starting one.
 
 ## Safety
 

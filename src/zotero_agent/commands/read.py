@@ -102,12 +102,55 @@ var atts = it.isAttachment() ? [it.id] : it.getAttachments();
 for (var id of atts) {
   var att = Zotero.Items.get(id);
   if (att.attachmentContentType === 'application/pdf') {
-    out.push({ attachmentKey: att.key, path: att.getFilePath(), title: att.getField('title') });
+    out.push({ attachmentKey: att.key, path: att.getFilePath(), title: att.getField('title'),
+               tags: att.getTags().map(function (t) { return t.tag; }),
+               note: att.isNote && att.isNote() ? '' : (att.getNote ? att.getNote() : '') });
   }
 }
-return { itemKey: it.key, title: it.getField('title'), pdfs: out };
+var parent = it.isAttachment() ? Zotero.Items.get(it.parentItemID) : it;
+return { itemKey: it.key, title: it.getField('title'),
+         language: parent ? parent.getField('language') : '', pdfs: out };
 """ % (key, key)
     return run_js(cfg, code, label="pdf") or {}
+
+
+def resolve_pdf_attachment(cfg, key, attachment_key=None, item=None):
+    """(item, attachment) for the one PDF meant by `key`, or die explaining.
+
+    An item can carry several PDFs, and picking silently is how the wrong file
+    gets rewritten. Shared by `zot toc` and `zot pdf-prep`; pass `item` when the
+    caller has already fetched it, to save a round-trip through the bridge.
+    """
+    import os
+
+    from ..constants import EXIT_GENERIC
+    from ..term import die
+
+    item = pdf_paths(cfg, key) if item is None else item
+    pdfs = item.get("pdfs") or []
+    if not pdfs:
+        die("no PDF attachments found for item %s" % key, code=EXIT_NOTFOUND)
+
+    if attachment_key:
+        pdfs = [p for p in pdfs if p.get("attachmentKey") == attachment_key]
+        if not pdfs:
+            die("item %s has no PDF attachment %s" % (key, attachment_key),
+                code=EXIT_NOTFOUND)
+    elif len(pdfs) > 1:
+        listing = "\n".join("  %s  %s" % (p.get("attachmentKey"), p.get("title") or "")
+                            for p in pdfs)
+        die("item %s has %d PDF attachments; choose one with --attachment KEY:\n%s"
+            % (key, len(pdfs), listing), code=EXIT_GENERIC)
+
+    attachment = pdfs[0]
+    path = attachment.get("path")
+    if not path:
+        die("Zotero has no local file for attachment %s (a linked file that moved, "
+            "or a not-yet-downloaded sync attachment)" % attachment.get("attachmentKey"),
+            code=EXIT_NOTFOUND)
+    if not os.path.exists(path):
+        die("the attachment's file is missing from disk: %s" % path, code=EXIT_NOTFOUND)
+    return item, attachment
 
 
 def cmd_pdf(args):

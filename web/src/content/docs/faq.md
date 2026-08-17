@@ -67,10 +67,11 @@ profile (auto-detected by `zot init`) is at:
 | Linux | `~/.zotero/zotero/<random>.default*` |
 | Windows | `%APPDATA%\Zotero\Zotero\Profiles\<random>.default*` |
 
-## `zot toc: invalid choice` or "needs a PDF engine"
+## `zot toc` / `zot pdf-prep`: "invalid choice" or "needs a PDF engine"
 
 Two different things. **`invalid choice: 'toc'`** means the `zot` on your `PATH`
-predates the command — check `zot --version` against the
+predates the command (the same applies to `pdf-prep`) — check `zot --version`
+against the
 [changelog](https://github.com/alex-roc/zotero-agent/blob/main/CHANGELOG.md) and
 upgrade with `uv tool upgrade zotero-agent`. **"needs a PDF engine"** means the
 CLI is current but the optional `[toc]` extra is not installed; the error prints
@@ -83,6 +84,29 @@ uv tool install --force "zotero-agent[toc]"
 The extra pulls in PyMuPDF, a multi-megabyte binary wheel, which is why it is not
 installed by default. It needs Python 3.10+. A Homebrew install already includes
 it, so this error cannot happen on that route.
+
+`zot pdf-prep` needs the same extra to split a scan, and additionally **OCRmyPDF**
+to add a text layer — that one is a program, not a Python package, so it comes
+from your system's package manager (`brew install ocrmypdf tesseract-lang unpaper
+jbig2enc`, or `sudo apt install ocrmypdf tesseract-ocr-spa unpaper`). The command
+prints the exact line for your platform, and `--no-ocr` splits and shrinks
+without it.
+
+## Does `zot pdf-prep` keep my highlights?
+
+The highlights stay where they are, on the original attachment — but they do
+**not** appear on the processed PDF. Zotero stores annotations against the
+attachment item and anchors them to coordinates on a page; the prepared file is a
+new attachment whose pages have been split apart, so the old anchors would not
+mean anything on it.
+
+That is why the original is kept by default, and why `--replace` and `--prune`
+refuse to trash an original that carries annotations unless you add
+`--trash-annotated`. If you have already annotated a scan heavily, the honest
+options are to keep both files (search in the OCR'd one, read your notes in the
+original) or to re-annotate afterwards.
+
+Tip: prepare a scan **before** you start reading it, and none of this arises.
 
 ## Will `zot toc` damage my PDFs or lose my highlights?
 

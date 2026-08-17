@@ -26,6 +26,7 @@ zot stats                       # analytics
 zot missing abstract|date|doi [--collection C]
 zot author "<name>"  |  zot recent  |  zot lint
 zot toc show|scan <KEY>         # a PDF's table of contents (needs the [toc] extra)
+zot pdf-prep <KEY> --dry-run    # is this PDF a scan? pages, dpi, text layer, gutter
 zot export <COLLECTION> --recursive   # collections do NOT include subcollections by default
 ```
 
@@ -48,7 +49,19 @@ zot move <collection> <KEY…> --yes
 zot note <KEY> --file note.html
 zot dedupe [--by title|doi] [--fuzzy] [--merge --yes]
 zot toc set|auto|clear <KEY> [--from f] --dry-run   # write a PDF's outline
+zot pdf-prep <KEY…> | --collection C                # split/OCR/shrink a scan
 ```
+
+**A scanned PDF has no text to read.** Before summarizing, quoting or running
+`zot toc`, check with `zot pdf-prep <KEY> --dry-run`: `no text layer` means your
+Read tool will see blank pages. `zot pdf-prep <KEY>` splits two-up scans into
+single pages, OCRs them and shrinks the file, attaching the result beside the
+original (tagged `pdf-prep`, so re-running is a no-op). It takes about half a
+second per page — say so before starting a collection. Do not pass `--replace`
+unless the user asked for it; `--prune` trashes superseded originals later. Note
+that highlights stay on the *original* attachment and do not follow the processed
+file, so both flags spare an annotated original unless `--trash-annotated` is
+passed — never add that yourself.
 
 `zot toc` is the one command that modifies the **PDF file** rather than the
 library. `scan --json` gives you the evidence (the book's own contents page, or

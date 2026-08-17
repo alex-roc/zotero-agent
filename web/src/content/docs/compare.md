@@ -23,7 +23,9 @@ key, works offline, MCP-ready. Its edge is exactly that combination: local
 write + offline + privacy. Working on the files themselves also makes things
 possible that a web API cannot reach at all — `zot toc` builds and embeds a PDF's
 table of contents, which fixes the empty Outline tab that Zotero's reader
-[cannot fill itself](https://github.com/zotero/zotero/issues/3396). The cost is
+[cannot fill itself](https://github.com/zotero/zotero/issues/3396), and
+`zot pdf-prep` splits and OCRs a scanned book in place, so a shelf of
+two-pages-at-a-time scans becomes searchable and quotable. The cost is
 that writes need a small privileged plugin with a documented
 [security model](/zotero-agent/security/), which you install yourself.
 

@@ -34,7 +34,7 @@ optional:
 | Extra | Pulls in | Enables |
 |-------|----------|---------|
 | `mcp` | `mcp` | `zot mcp`, the Model Context Protocol server |
-| `toc` | `pymupdf` | `zot toc`, reading and writing PDF outlines |
+| `toc` | `pymupdf` | `zot toc`, reading and writing PDF outlines; `zot pdf-prep`, splitting scans |
 
 `zot toc` without the extra exits with the exact command that fixes it, so
 installing it later is fine. Note that PyMuPDF is a multi-megabyte binary wheel —
@@ -42,6 +42,30 @@ that, not licensing, is why it is not a hard dependency (this project is
 AGPL-3.0, the same licence).
 
 This puts `zot` on your `PATH`.
+
+### Preparing scanned PDFs (`zot pdf-prep`)
+
+Splitting a two-up scan needs only the `[toc]` extra. Adding a **text layer**
+also needs [OCRmyPDF] and its own dependencies, which are programs rather than
+Python packages, so they come from the system's package manager:
+
+```bash
+brew install ocrmypdf tesseract-lang unpaper jbig2enc   # macOS
+sudo apt install ocrmypdf tesseract-ocr-spa unpaper     # Debian/Ubuntu
+```
+
+:::caution[Install the language packs]
+`tesseract-lang` (or `tesseract-ocr-<lang>`) is what makes languages other than
+English available. Without it, OCR of a Spanish book silently comes out wrong
+rather than failing.
+:::
+
+`unpaper` powers `--clean`, which despeckles the image before recognition and
+measurably improves the text; `jbig2enc` shrinks bitonal scans further. Running
+`zot pdf-prep` without OCRmyPDF exits with these exact commands, and `--no-ocr`
+splits and optimises without it.
+
+[OCRmyPDF]: https://ocrmypdf.readthedocs.io/
 
 ### Homebrew (macOS / Linux)
 

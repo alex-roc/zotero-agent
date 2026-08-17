@@ -22,7 +22,7 @@ import sys
 from ..constants import EXIT_CONFIG, EXIT_GENERIC, EXIT_NOTFOUND, STATE_DIR
 from ..output import dump_json
 from ..term import confirm_write, die, info
-from .read import pdf_paths
+from .read import resolve_pdf_attachment
 
 OCR_HINT = (
     "This PDF has no text layer — it is page images, so there is nothing to read\n"
@@ -38,30 +38,7 @@ def _resolve_pdf(args):
     """(cfg, item, attachment) for the item's single PDF, or die explaining."""
     from ..config import require_config
     cfg = require_config(args)
-    item = pdf_paths(cfg, args.key)
-    pdfs = item.get("pdfs") or []
-    if not pdfs:
-        die("no PDF attachments found for item %s" % args.key, code=EXIT_NOTFOUND)
-
-    wanted = getattr(args, "attachment", None)
-    if wanted:
-        pdfs = [p for p in pdfs if p.get("attachmentKey") == wanted]
-        if not pdfs:
-            die("item %s has no PDF attachment %s" % (args.key, wanted), code=EXIT_NOTFOUND)
-    elif len(pdfs) > 1:
-        listing = "\n".join("  %s  %s" % (p.get("attachmentKey"), p.get("title") or "")
-                            for p in pdfs)
-        die("item %s has %d PDF attachments; choose one with --attachment KEY:\n%s"
-            % (args.key, len(pdfs), listing), code=EXIT_GENERIC)
-
-    attachment = pdfs[0]
-    path = attachment.get("path")
-    if not path:
-        die("Zotero has no local file for attachment %s (a linked file that moved, "
-            "or a not-yet-downloaded sync attachment)" % attachment.get("attachmentKey"),
-            code=EXIT_NOTFOUND)
-    if not os.path.exists(path):
-        die("the attachment's file is missing from disk: %s" % path, code=EXIT_NOTFOUND)
+    item, attachment = resolve_pdf_attachment(cfg, args.key, getattr(args, "attachment", None))
     return cfg, item, attachment
 
 

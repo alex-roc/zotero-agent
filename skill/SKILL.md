@@ -12,7 +12,9 @@ description: >-
   item's PDF, summarize a document at multiple levels (whole/chapter/section),
   read a PDF's highlights/annotations, generate a PDF's table of contents /
   bookmarks / outline so Zotero's reader can navigate it, or create notes on
-  items. Requires the zotero-agent bridge plugin installed and Zotero running.
+  items. Also use it to prepare scanned PDFs: split two-up scans into single
+  pages, OCR them so they can be searched and read, and shrink them. Requires
+  the zotero-agent bridge plugin installed and Zotero running.
 ---
 
 # Zotero control (via the `zot` CLI)
@@ -97,6 +99,7 @@ zot move <collection> <key…>                            # add items to a colle
 zot collection <name> [--parent K]                      # create a (sub)collection
 zot note <key> --file note.html [--if-not-exists]       # add a child note
 zot toc set|auto|clear <key> [--from f] [--dry-run]     # write a PDF's outline
+zot pdf-prep <key…> | --collection C [--dry-run]        # split/OCR/shrink a scan
 ```
 
 Batch / higher-level (all **undoable** except merges — see safety below):
@@ -197,6 +200,14 @@ short version:
   <ITEMKEY> --from -` writes it. Prefer the book's own contents page over
   typographic guessing, and never invent page numbers — the same reference file
   has the full procedure. Needs the `[toc]` extra.
+- **If the PDF has no text layer, there is nothing to read.** `zot pdf-prep
+  <ITEMKEY> --dry-run` says so in one line, and without `--dry-run` fixes it:
+  two-up scans are split into single pages, OCR adds the text layer, and the
+  file shrinks. Run it *before* `zot toc`, before summarizing, and before any
+  question about the document's content — those all depend on text existing.
+  The processed PDF is attached beside the original and tagged `pdf-prep`, so
+  re-running is a no-op; `--prune` trashes the superseded originals afterwards.
+  Needs the `[toc]` extra and OCRmyPDF (`zot pdf-prep` prints how to install it).
 
 ## Safe workflow for bulk / destructive operations
 

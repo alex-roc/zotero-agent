@@ -13,6 +13,7 @@ own PDF-reading tool — no OCR pipeline, no extraction step.
 - [4. Use the user's existing annotations](#4-existing-annotations)
 - [5. Save the result as a note](#5-save-as-note)
 - [6. Build the PDF's table of contents](#6-table-of-contents)
+- [7. Prepare a scanned PDF](#7-prepare-a-scan)
 
 ## 1. Locate the PDF
 
@@ -247,6 +248,59 @@ with no judgement from you. It is right often enough to be worth trying with
 `--dry-run`, but review the output: a collective volume where every chapter
 prints its own contents will come out in contents order rather than page order,
 and `normalize` will warn that pages go backwards.
+
+<a id="7-prepare-a-scan"></a>
+## 7. Prepare a scanned PDF
+
+Everything above assumes the PDF has text in it. A scanned book has none: your
+Read tool sees blank pages, `zot toc scan` finds no headings, and a summary
+built on that is a summary of nothing. Check before you promise an answer.
+
+```bash
+zot pdf-prep <ITEMKEY> --dry-run     # one line: pages, dpi, text layer, gutter
+```
+
+A scan typically reports `no text layer` and, for a book photographed on a
+flatbed, `double-page` — one landscape page per *pair* of printed pages. Fix
+both in one pass:
+
+```bash
+zot pdf-prep <ITEMKEY>                       # split + OCR + shrink, then attach
+zot pdf-prep <ITEMKEY> --ocr spa --profile quality   # force language / best text
+zot pdf-prep --collection "Escaneos" --dry-run       # survey a whole shelf first
+```
+
+Then re-locate the PDF: the item now has **two**, and the new one is titled
+`PDF (OCR)`. `zot pdf <ITEMKEY> --json` lists both with their attachment keys;
+read the processed one, and pass `--attachment <KEY>` to commands that need one
+file.
+
+Points worth knowing before you run it on someone's library:
+
+- **It is additive by default.** The original is kept, and the new attachment
+  is tagged `pdf-prep`, so a second run is a no-op rather than a duplicate. Do
+  not pass `--replace` on your own initiative — trashing the user's only scan
+  is their call. Offer `--prune` (trashes superseded originals) once they have
+  looked at the result.
+- **Highlights do not survive the trip.** Zotero anchors annotations to the
+  attachment and to page coordinates, so the user's existing highlights stay on
+  the original and do not appear on the processed PDF. `--replace`/`--prune`
+  therefore refuse to trash an annotated original unless `--trash-annotated` is
+  given — never add that flag yourself. If the user has already annotated the
+  scan, say so before processing: the honest options are keeping both files
+  (search in one, read notes in the other) or re-annotating afterwards.
+- **OCR takes minutes, not seconds** — roughly half a second per page. For a
+  collection, say so before starting, and prefer `--dry-run` first.
+- **Check the split before trusting a batch.** If `--dry-run` reports a low
+  gutter confidence, or the pages are not a uniform two-up scan, run one item
+  and look at a page. `--gutter FRAC` forces the cut, `--single "1,2"` leaves
+  covers and fold-outs whole, `--split never` disables splitting entirely.
+- **The language matters.** It comes from the item's `language` field, falling
+  back to `spa+eng`. If the field is empty and the book is in another language,
+  pass `--ocr` explicitly — a wrong language silently produces wrong text.
+- OCR output is a machine's reading of an image: good enough to search, cite
+  and summarize from, but quote long passages against the page image when it
+  matters.
 
 ## Safe-workflow reminder
 

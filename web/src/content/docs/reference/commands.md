@@ -3,7 +3,7 @@ title: Command reference
 description: Every zot command and its arguments — auto-generated from the CLI.
 ---
 
-_Auto-generated from the `zot` CLI (v0.6.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.7.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 
@@ -508,6 +508,44 @@ zot completion [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID]
 | `shell` |  |
 
 ## Other
+
+### `zot pdf-prep`
+
+```
+zot pdf-prep [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID]
+                    [-q] [--debug] [-y] [--json] [--collection COLLECTION]
+                    [--attachment ATTACHMENT] [--split {auto,always,never}]
+                    [--gutter GUTTER] [--overlap OVERLAP] [--single PAGES]
+                    [--rtl] [--ocr LANG] [--no-ocr]
+                    [--profile {balanced,quality,small}] [--rotate]
+                    [--title TITLE] [--out DIR] [--replace] [--prune]
+                    [--trash-annotated] [--force] [--timeout TIMEOUT]
+                    [--dry-run]
+                    [keys ...]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `keys` | item keys or BBT citekeys ('-' reads stdin) |
+| `--collection` | process every item in a collection (key or name) |
+| `--attachment` | attachment key, when the item has several PDFs |
+| `--split` | split two-up scans into one page per leaf (default: auto-detect) |
+| `--gutter` | force the cut as a fraction of page width (0.5 = middle) |
+| `--overlap` | extra width each half keeps past the cut (default 0.008) |
+| `--single` | pages to leave whole, e.g. '1,2,147' (covers, fold-outs) |
+| `--rtl` | right-to-left book: right half first |
+| `--ocr` | tesseract languages (default: from the item's language field) |
+| `--no-ocr` | split and optimise only; leave the file without a text layer |
+| `--profile` | balanced (default), quality (300 dpi OCR, bigger), or small |
+| `--rotate` | let OCR fix sideways pages |
+| `--title` | title for the new attachment (default: 'PDF (OCR)') |
+| `--out` | write the result to a directory instead of attaching it |
+| `--replace` | trash the original attachment once the new one is attached |
+| `--prune` | trash originals superseded by an earlier run; processes nothing |
+| `--trash-annotated` | also trash originals carrying highlights (they do NOT follow the new file — Zotero ties them to the attachment) |
+| `--force` | reprocess items already prepared |
+| `--timeout` | seconds to allow OCR per item |
+| `--dry-run` | analyse and report the plan; touch nothing |
 
 ### `zot attach`
 

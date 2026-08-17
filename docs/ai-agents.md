@@ -128,6 +128,13 @@ With the `[toc]` extra, three more work on a PDF's table of contents:
 returns evidence, not an answer — the model decides the hierarchy and writes it
 back. Without the extra they return the install command as an error.
 
+The same extra adds `analyze_pdf_scan`, which answers the question that comes
+first with a scanned book — is there any text to read at all? — and
+`prepare_pdf_scan`, which splits two-up scans into single pages, OCRs them and
+shrinks the file, attaching the result beside the original. Preparing is slow
+(roughly half a second per page) and needs OCRmyPDF installed, so a model should
+analyse first and say what it is about to do.
+
 ## Safety
 
 Writes go through the token-protected bridge and are recorded to an audit log.

@@ -91,6 +91,15 @@ its trust chain is HTTPS plus the public repo:
 - The token is **not** a secret against local processes running as your user; it
   defends against browser-origin and other-host access, not against code you
   already run locally.
+- `zot pdf-prep` is the only command that runs an **external program**: OCRmyPDF
+  (and through it tesseract and Ghostscript), which you install yourself with the
+  system's package manager. It is invoked with a fixed argument list — never a
+  shell string — on a copy in a temporary directory, so the attachment in your
+  library is only ever read. Its output is attached as a *new* file; the original
+  is kept unless you ask for it to go, and even then an original carrying
+  highlights is spared, because Zotero ties annotations to the attachment rather
+  than to the file and they do not follow the new PDF (`--trash-annotated`
+  overrides). Removals go to the trash, never `eraseTx`.
 - `zot toc` is the one command that writes **outside the database**: it edits the
   attachment file itself. It touches only the outline tree and saves
   incrementally, so existing bytes — including scanned page images — are left

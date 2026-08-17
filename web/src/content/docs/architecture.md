@@ -55,12 +55,20 @@ operations are built cleanly on the Zotero JS API (`export`, `missing`, `author`
 ### Layer 1b — the PDF engine
 
 `src/zotero_agent/pdf/`: the only part that opens a file rather than talking to
-Zotero, behind the `[toc]` extra and used by `toc`. PyMuPDF is reached solely
-through `require_pymupdf()`, so the rest of the package stays importable without
-it. Inside, `pagemap` is deliberately pure — the printed-page-to-physical-page
-arithmetic is the subtle part, and keeping it free of the engine is what makes it
-testable without a fixture PDF — while `scan` reads a document and `outline`
-reads, validates and writes the tree.
+Zotero, behind the `[toc]` extra and used by `toc` and `pdf-prep`. PyMuPDF is
+reached solely through `require_pymupdf()`, so the rest of the package stays
+importable without it. Inside, `pagemap` is deliberately pure — the
+printed-page-to-physical-page arithmetic is the subtle part, and keeping it free
+of the engine is what makes it testable without a fixture PDF — while `scan`
+reads a document and `outline` reads, validates and writes the tree.
+
+`prep`, the `zot pdf-prep` engine, follows the same split: deciding where a
+scanned book's gutter falls is arithmetic over an ink profile, so it is pure and
+unit-tested, and only analysing, splitting and invoking OCR touch the outside
+world. It is also the one place that shells out to a **program** rather than a
+library — OCRmyPDF, detected with `shutil.which` and never a hard dependency,
+because OCR is optional and its toolchain belongs to the system's package
+manager rather than to a Python wheel.
 
 Config precedence: flags > `ZOTERO_AGENT_*` env >
 `~/.config/zotero-agent/config.json` — see

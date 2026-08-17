@@ -65,6 +65,12 @@ body in-process and returns the result as JSON. This mirrors the well-known
   printed-page-to-physical-page arithmetic is the subtle part, and keeping it
   free of the engine is what makes it testable without a fixture PDF — while
   `scan` reads a document and `outline` reads, validates and writes the tree.
+  `prep` (the `pdf-prep` engine) follows the same split: the gutter arithmetic
+  over an ink profile is pure and unit-tested, and only analysing, splitting and
+  invoking OCR touch the outside world. It is also the one place that shells out
+  to a **program** rather than a library — OCRmyPDF, detected with
+  `shutil.which` and never a hard dependency, since OCR is optional and its
+  toolchain belongs to the system's package manager, not to a wheel.
 - **Layer 2a — the `zotero` skill** (`skill/`): teaches Claude Code to drive
   `zot`, including the safe workflow for bulk/destructive operations.
 - **Layer 2b — the MCP server** (`zot mcp`, `src/zotero_agent/mcp_server.py`):

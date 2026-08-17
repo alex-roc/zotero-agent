@@ -4,7 +4,7 @@ import argparse
 import urllib.error
 
 from . import __version__
-from .commands import admin, features, read, toc, write
+from .commands import admin, features, prep, read, toc, write
 from .constants import IS_DEV_TREE
 from .term import ZotError, die, set_verbosity
 
@@ -81,6 +81,42 @@ def build_parser():
                     help="tell Zotero to re-upload the file on the next sync")
     sp.add_argument("--cap", type=int, default=400, help="max heading candidates in a scan")
     sp.add_argument("--samples", type=int, default=20, help="rows to print per section of a scan")
+
+    sp = add("pdf-prep", prep.cmd_pdf_prep,
+             "prepare a scanned PDF: split double pages, OCR, shrink — needs [toc] + ocrmypdf")
+    sp.add_argument("keys", nargs="*", help="item keys or BBT citekeys ('-' reads stdin)")
+    sp.add_argument("--collection", help="process every item in a collection (key or name)")
+    sp.add_argument("--attachment", help="attachment key, when the item has several PDFs")
+    sp.add_argument("--split", choices=["auto", "always", "never"], default="auto",
+                    help="split two-up scans into one page per leaf (default: auto-detect)")
+    sp.add_argument("--gutter", type=float,
+                    help="force the cut as a fraction of page width (0.5 = middle)")
+    sp.add_argument("--overlap", type=float, default=0.008,
+                    help="extra width each half keeps past the cut (default 0.008)")
+    sp.add_argument("--single", metavar="PAGES",
+                    help="pages to leave whole, e.g. '1,2,147' (covers, fold-outs)")
+    sp.add_argument("--rtl", action="store_true", help="right-to-left book: right half first")
+    sp.add_argument("--ocr", metavar="LANG",
+                    help="tesseract languages (default: from the item's language field)")
+    sp.add_argument("--no-ocr", dest="no_ocr", action="store_true",
+                    help="split and optimise only; leave the file without a text layer")
+    sp.add_argument("--profile", choices=["balanced", "quality", "small"], default="balanced",
+                    help="balanced (default), quality (300 dpi OCR, bigger), or small")
+    sp.add_argument("--rotate", action="store_true", help="let OCR fix sideways pages")
+    sp.add_argument("--title", help="title for the new attachment (default: 'PDF (OCR)')")
+    sp.add_argument("--out", metavar="DIR",
+                    help="write the result to a directory instead of attaching it")
+    sp.add_argument("--replace", action="store_true",
+                    help="trash the original attachment once the new one is attached")
+    sp.add_argument("--prune", action="store_true",
+                    help="trash originals superseded by an earlier run; processes nothing")
+    sp.add_argument("--trash-annotated", dest="trash_annotated", action="store_true",
+                    help="also trash originals carrying highlights (they do NOT "
+                         "follow the new file — Zotero ties them to the attachment)")
+    sp.add_argument("--force", action="store_true", help="reprocess items already prepared")
+    sp.add_argument("--timeout", type=int, default=3600, help="seconds to allow OCR per item")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="analyse and report the plan; touch nothing")
 
     sp = add("collections", read.cmd_collections, "list collections (read API)")
     sp.add_argument("--limit", type=int, default=100)
