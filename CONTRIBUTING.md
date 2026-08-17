@@ -140,8 +140,13 @@ $EDITOR plugin/zotero-agent-bridge/bootstrap.js    # BRIDGE.version
 python scripts/gen_updates_json.py
 # 4. move CHANGELOG's [Unreleased] into the new version, then
 python -m unittest discover -s tests && python scripts/gen_cli_reference.py
-git commit -am "release: X.Y.Z" && git tag vX.Y.Z && git push --follow-tags
+git commit -am "release: X.Y.Z" && git tag -a vX.Y.Z -m "vX.Y.Z" && git push --follow-tags
 ```
+
+The `-a` is not decoration: `--follow-tags` pushes **annotated** tags only, so a
+lightweight `git tag vX.Y.Z` stays on your machine and the release silently never
+starts (this happened with v0.7.0 — the fix was a separate `git push origin
+vX.Y.Z`, not a force-push, which would have re-run the whole workflow).
 
 The tag triggers `.github/workflows/release.yml`, which builds the wheel + the
 XPI, publishes the GitHub Release (versioned **and** stable asset names),

@@ -703,8 +703,12 @@ class TestTocCommand(unittest.TestCase):
         self.state = tempfile.TemporaryDirectory()
         self.addCleanup(self.state.cleanup)
         patches = [
-            mock.patch.object(toc_cmd, "pdf_paths", return_value={
-                "itemKey": "ABCD1234", "title": "A book",
+            # Patched at its source rather than on `toc`, which now reaches the
+            # PDF through the shared `resolve_pdf_attachment`. That resolver then
+            # runs for real over this fixture — the "which of several PDFs" and
+            # "file missing from disk" checks included.
+            mock.patch("zotero_agent.commands.read.pdf_paths", return_value={
+                "itemKey": "ABCD1234", "title": "A book", "language": "en",
                 "pdfs": [{"attachmentKey": "ATT11111", "path": self.pdf, "title": "PDF"}]}),
             mock.patch("zotero_agent.config.require_config",
                        return_value={"base": "http://x", "token": "t", "userID": "1"}),

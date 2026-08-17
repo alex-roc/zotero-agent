@@ -20,7 +20,8 @@ things that are easy to get wrong.
 Three generated artefacts must be in sync, and CI fails on each:
 
 ```bash
-python3 -m unittest discover -s tests            # 174 tests, no network, no Zotero
+python3 -m unittest discover -s tests            # 201 tests, no network, no Zotero
+uv run --with pymupdf python -m unittest discover -s tests   # the other 18
 uvx ruff check src tests cli/zot scripts
 python3 scripts/gen_cli_reference.py             # then: git diff --exit-code
 python3 scripts/gen_updates_json.py --check      # the plugin's auto-update manifest
@@ -30,6 +31,12 @@ python3 scripts/gen_homebrew_formula.py --check  # the Homebrew formula
 The release itself is tag-driven (`git tag vX.Y.Z && git push --follow-tags`), and it
 ends with one manual step: `gh workflow run sync.yml --repo alex-roc/homebrew-tap`.
 See `CONTRIBUTING.md` → "Cutting a release".
+
+Run the suite **both ways**. Without PyMuPDF installed, 18 engine-dependent tests
+in `test_toc.py` report as `skipped` — and CI's `test-toc` job installs the extra
+and runs them for real. Refactoring `commands/toc.py` and reading a local "OK
+(skipped=18)" as a pass is how v0.7.0 shipped a tag whose CI was red: the tests
+patched a symbol (`toc.pdf_paths`) that the refactor had moved.
 
 `gen_updates_json.py` can only fill in `update_hash` when the built XPI is at hand,
 so **running it locally silently drops the hash** — the value in `updates.json` comes
