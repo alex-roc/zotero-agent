@@ -19,7 +19,7 @@ import tempfile
 from ..http import run_js
 from ..output import dump_json
 from ..pdf import shrink as shrinklib
-from ..resolve import keys_from
+from ..resolve import keys_from, resolve_key
 from ..term import confirm_write, die, info
 
 MB = 1024 * 1024
@@ -157,7 +157,9 @@ def _shrink_targets(cfg, args):
     pdfs = [a for a in atts if a["contentType"] == "application/pdf"
             and a["hasFile"] and not a["deleted"] and not a["linked"]]
     if args.keys:
-        wanted = set(keys_from(cfg, args.keys))
+        # keys_from() only reads the CLI/stdin list; resolving citekeys is a
+        # separate step, exactly as prep and write do it.
+        wanted = {resolve_key(cfg, k) for k in keys_from(args.keys)}
         chosen = [a for a in pdfs if a["key"] in wanted or a["parentKey"] in wanted]
         missing = wanted - {a["key"] for a in chosen} - {a["parentKey"] for a in chosen}
         for key in sorted(missing):

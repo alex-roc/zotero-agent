@@ -8,9 +8,11 @@ both are tested against the real measurements that motivated them.
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
+from zotero_agent.commands import storage  # noqa: E402
 from zotero_agent.commands.features import tags_for_path  # noqa: E402
 from zotero_agent.commands.storage import is_disposable_orphan  # noqa: E402
 from zotero_agent.commands.write import merge_confidence  # noqa: E402
@@ -168,6 +170,46 @@ class DisposableOrphanTests(unittest.TestCase):
 
     def test_already_trashed_is_left_alone(self):
         self.assertFalse(is_disposable_orphan(dict(self.BASE, deleted=True)))
+
+
+class ShrinkTargetSelectionTests(unittest.TestCase):
+    """Explicit keys must reach the same resolution path every other command uses.
+
+    keys_from() takes only the CLI list; resolving citekeys is a separate step.
+    Calling it as keys_from(cfg, keys) raised TypeError, so `zot shrink KEY`
+    never worked at all — only the --min-mb sweep was ever exercised.
+    """
+
+    ATTS = [
+        {"key": "AAAA1111", "parentKey": "PPPP1111", "contentType": "application/pdf",
+         "size": 30 * MB, "hasFile": True, "deleted": False, "linked": False},
+        {"key": "BBBB2222", "parentKey": None, "contentType": "application/pdf",
+         "size": 5 * MB, "hasFile": True, "deleted": False, "linked": False},
+        {"key": "CCCC3333", "parentKey": "PPPP3333", "contentType": "text/html",
+         "size": 90 * MB, "hasFile": True, "deleted": False, "linked": False},
+    ]
+
+    class Args:
+        def __init__(self, keys=None, min_mb=25):
+            self.keys = keys or []
+            self.min_mb = min_mb
+
+    def _patched(self, args):
+        with mock.patch.object(storage, "_inventory", return_value=(self.ATTS, 0)), \
+             mock.patch.object(storage, "resolve_key", side_effect=lambda cfg, k: k):
+            return storage._shrink_targets(None, args)
+
+    def test_an_explicit_attachment_key_selects_that_file(self):
+        got = self._patched(self.Args(keys=["AAAA1111"]))
+        self.assertEqual([a["key"] for a in got], ["AAAA1111"])
+
+    def test_an_explicit_parent_key_selects_its_attachment(self):
+        got = self._patched(self.Args(keys=["PPPP1111"]))
+        self.assertEqual([a["key"] for a in got], ["AAAA1111"])
+
+    def test_the_sweep_honours_min_mb_and_skips_non_pdfs(self):
+        got = self._patched(self.Args(min_mb=25))
+        self.assertEqual([a["key"] for a in got], ["AAAA1111"])
 
 
 class TagsFromCollectionPathTests(unittest.TestCase):
