@@ -13,7 +13,9 @@ description: >-
   read a PDF's highlights/annotations, generate a PDF's table of contents /
   bookmarks / outline so Zotero's reader can navigate it, or create notes on
   items. Also use it to prepare scanned PDFs: split two-up scans into single
-  pages, OCR them so they can be searched and read, and shrink them. Requires
+  pages and OCR them so they can be searched and read. Also use it when the user
+  wants to know where their library's disk space goes or to reclaim it: shrink
+  oversized PDFs, and drop orphan attachments and saved page snapshots. Requires
   the zotero-agent bridge plugin installed and Zotero running.
 ---
 
@@ -82,6 +84,7 @@ zot annotations <key> [--to-note]                       # PDF highlights (opt. �
 zot related <key>                                       # related items
 zot notes <key>                                         # list an item's notes
 zot lint                                                # data-quality report
+zot disk                                                # where the attachment GBs are
 zot toc show|scan <key>                                 # a PDF's table of contents
 ```
 
@@ -92,14 +95,17 @@ zot add doi|isbn|arxiv <id> [--pdf] [--collection C]    # import by identifier
 zot add isbn <id> --check-duplicate                     # refuse if already there
 zot attach <key> --file <path> | --url <url> [--link]   # attach to an existing item
 zot pdf-fetch <key…> | --collection C                   # find an open-access PDF
-zot dedupe [--collection C] [--merge]                   # find/merge duplicates
+zot dedupe [--collection C] [--plan f] [--merge]         # find duplicates; plan a merge
+zot merge --from plan.jsonl                             # execute a merge plan (NOT undoable)
 zot tag add|rm <tag> <key…>   |   tag rename <old> --new <n>   |   tag purge
 zot set <field> <value> <key…>                          # edit a field
 zot move <collection> <key…>                            # add items to a collection
 zot collection <name> [--parent K]                      # create a (sub)collection
 zot note <key> --file note.html [--if-not-exists]       # add a child note
 zot toc set|auto|clear <key> [--from f] [--dry-run]     # write a PDF's outline
-zot pdf-prep <key…> | --collection C [--dry-run]        # split/OCR/shrink a scan
+zot pdf-prep <key…> | --collection C [--dry-run]        # split + OCR a scan
+zot shrink <key…> | --min-mb N [--dry-run]              # downsample fat PDFs in place
+zot gc [--orphans] [--snapshots] [--empty-trash]        # drop what nothing points at
 ```
 
 Batch / higher-level (all **undoable** except merges — see safety below):
@@ -110,6 +116,7 @@ zot undo last | <op-id> | list        # restore a prior apply/enrich
 zot enrich --field doi|date|abstract --source crossref|openalex [--dry-run]
 zot tag normalize [--map old_new.csv] [--dry-run]   # fold case/space tag variants
 zot dedupe --by title --fuzzy         # near-duplicate titles (Levenshtein)
+zot tag from-collections --rules r.json [--out f|--apply]  # tags from the folder tree
 ```
 
 `zot apply` is the batch primitive: each JSONL line is
@@ -121,6 +128,46 @@ values, write the JSONL, and `zot apply` writes them — the CLI never calls an 
 `zot missing` uses the reliable `getField` check, not the empty-string search
 condition (which silently returns 0 — see recipes.md). Use `exec` only for
 operations these commands don't cover.
+
+**`enrich` verifies before it writes — trust it, but read what it rejects.**
+Crossref and OpenAlex always answer, and the answer used to be written as-is: on
+a real library, 6 of 6 sampled proposals were different works ("Mujeres libres en
+política" → a Brill human-rights dataset). Now every search hit must clear three
+independent signals — title similarity ≥ 0.92 (`--min-similarity` to move it),
+year within ±1 when both are known, and the item's first-author surname among the
+candidate's authors. An item with **no year and no author** needs 0.98, because
+title similarity is then the only evidence: at 0.94 the check accepted "The OECD
+Going Digital Measurement Roadmap" as the *2026* edition of itself.
+
+Expect a high rejection rate — 418 of 638 on a real run — and read the
+`Rejected N candidate(s): title 380, year 26, author 12` line as the feature
+working, not as a failure. Items that **already have a DOI** skip the guessing
+entirely: `enrich` looks them up by that DOI, which is exact.
+
+```bash
+zot enrich --field abstract --dry-run     # shows the matched title + similarity
+zot enrich --field doi --min-similarity 0.95   # stricter still
+```
+
+**Duplicates: propose, review, then merge.** `Zotero.Items.merge` cannot be
+undone, and grouping by title alone is wrong more often than right — on a real
+library 20 of 46 groups were distinct works (five different *Estadística*
+textbooks by Spiegel and Triola; the 3rd and 4th editions of Scott). So `dedupe`
+now scores each group and only calls it *confident* when nothing contradicts it:
+same author (compared by containment, so "Banda" matches "Banda, Juan M."), same
+edition, years within ±1, and no two different *formal* item types — a thesis and
+the journal article drawn from it stay separate, while webpage/blogPost pairs are
+treated as one thing imported twice.
+
+```bash
+zot dedupe                          # groups, flagged ⚠ with the reason
+zot dedupe --plan merges.jsonl      # a reviewable plan: delete the lines you reject
+zot merge --from merges.jsonl       # execute what survived (NOT undoable)
+zot dedupe --merge                  # confident groups only; --force for the rest
+```
+
+The plan carries what you need to decide — edition, publisher, creators, PDF and
+note counts — because key/title/year alone is exactly what is not enough.
 
 **One item shape.** Every command that emits items in `--json` uses the same flat
 record — `key, citekey, type, title, date, year, creators, venue, doi, url, tags,
@@ -207,6 +254,40 @@ short version:
   question about the document's content — those all depend on text existing.
   The processed PDF is attached beside the original and tagged `pdf-prep`, so
   re-running is a no-op; `--prune` trashes the superseded originals afterwards.
+- **`pdf-prep` is for OCR; `zot shrink` is for weight.** They were one command
+  and it lied: with `--no-ocr` and nothing to split, prep copied the file byte for
+  byte (150.6 MB → 150.6 MB) and attached the copy, because ocrmypdf's optimiser
+  only runs during an OCR pass. That path now reports `nothing-to-do` and points
+  at `shrink`, which downsamples the page images with Ghostscript while leaving
+  the text layer and the page count alone — so Zotero's annotations still anchor.
+
+  ```bash
+  zot disk                              # what the store weighs, and where
+  zot shrink --min-mb 25 --dry-run      # candidates, with the measured gain
+  zot shrink ABCD1234                   # one item, replaced in place
+  ```
+
+  200 dpi is the default because it is the measured sweet spot for scanned books:
+  about a fifth of the original, still legible down to pencil marginalia. The
+  result is only kept when the page count survives and the file is ≤80% of the
+  original, so a run over 35 real books shrank 13 and left 22 untouched. Nothing
+  is lost by trying. Needs `ghostscript` and `qpdf`.
+
+- **`zot gc` removes what nothing points at**: orphan attachments (no parent item
+  — invisible in the UI) and page snapshots (the item keeps its URL). It never
+  bins an attachment carrying highlights, because annotations belong to the
+  attachment and do not survive it. Space comes back only once the trash is
+  emptied: `zot gc --empty-trash` is permanent, so `zot backup` first.
+
+- **`zot tag from-collections --rules rules.json`** harvests the meaning already
+  encoded in the folder tree, which is where a pre-tagging library keeps it. The
+  rules file is `{"containers": [...], "rules": [{"match": regex, "tags": [...]}]}`;
+  matching is case- and accent-insensitive. **Put every structural branch in
+  `containers`** — root folders, "Articulos", "Z. Archivo" — or the top of the
+  tree shouts over everything under it: with the root branch counted, one run
+  tagged 1318 of 3019 items `#digitalización`, a label that separates nothing.
+  The command warns when a tag covers more than 40% of the library. Use `--out`
+  for a reviewable plan, `--apply` to write it undoably.
   Needs the `[toc]` extra and OCRmyPDF (`zot pdf-prep` prints how to install it).
 
 ## Safe workflow for bulk / destructive operations

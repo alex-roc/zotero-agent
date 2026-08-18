@@ -103,8 +103,10 @@ zot search "bolivia" --limit 10               # fast local read
 zot missing abstract --collection SS5MVVB6    # items lacking a field
 zot stats                                     # library analytics
 zot add doi 10.1371/journal.pmed.0020124 --pdf   # import + attach an OA PDF
-zot dedupe --by title --fuzzy                 # find near-duplicate titles
-zot enrich --field doi --dry-run              # fill missing DOIs from Crossref
+zot dedupe --plan merges.jsonl                # review duplicates, then `zot merge --from`
+zot enrich --field doi --dry-run              # fill missing DOIs, verified before writing
+zot disk                                      # where the attachment store's gigabytes are
+zot shrink --min-mb 25 --dry-run              # downsample oversized PDFs in place
 zot apply edits.jsonl                         # declarative batch edit (undoable)
 zot undo last                                 # roll it back
 zot tag normalize --dry-run                   # fold case/space tag variants
@@ -120,9 +122,10 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 | Group | Commands |
 |-------|----------|
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
-| **Edit / organize** | `add` `dedupe` `tag` (add/rm/rename/purge/normalize) `set` `move` `collection` `note` `attach` `pdf-fetch` |
+| **Edit / organize** | `add` `dedupe` `merge` `tag` (add/rm/rename/purge/normalize/from-collections) `set` `move` `collection` `note` `attach` `pdf-fetch` |
+| **Disk / cleanup** | `disk` `shrink` `gc` — `shrink` needs ghostscript + qpdf |
 | **PDF outlines** | `toc` (show/scan/set/auto/clear) — needs the `[toc]` extra |
-| **Scanned PDFs** | `pdf-prep` (split double pages, OCR, shrink) — needs `[toc]` + OCRmyPDF |
+| **Scanned PDFs** | `pdf-prep` (split double pages, OCR) — needs `[toc]` + OCRmyPDF |
 | **Batch (undoable)** | `apply` `undo` `enrich` |
 | **Setup / escape** | `ping` `init` `skill` `backup` `sync` `restart` `exec` `mcp` `completion` |
 

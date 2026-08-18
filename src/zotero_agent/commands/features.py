@@ -14,11 +14,13 @@ import csv
 import datetime
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
+from .. import match
 from ..constants import EXIT_NOTFOUND, STATE_DIR, VERSION
 from ..http import run_js
 from ..jslib import ITEM_MAP, field_name, scope_js
@@ -290,36 +292,78 @@ def _http_json(url, timeout=20):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _crossref_lookup(title):
-    q = urllib.parse.urlencode({"query.bibliographic": title, "rows": 1})
+def _try_json(url):
     try:
-        data = _http_json("https://api.crossref.org/works?" + q)
-    except (urllib.error.URLError, json.JSONDecodeError):
+        return _http_json(url)
+    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
         return None
-    items = data.get("message", {}).get("items", [])
-    return items[0] if items else None
 
 
-def _openalex_lookup(title):
-    q = urllib.parse.urlencode({"search": title, "per-page": 1})
-    try:
-        data = _http_json("https://api.openalex.org/works?" + q)
-    except (urllib.error.URLError, json.JSONDecodeError):
+def _crossref_candidate(work):
+    """Crossref's record, reduced to the shape `match.verify` compares."""
+    if not work:
         return None
-    results = data.get("results", [])
-    return results[0] if results else None
+    parts = (work.get("issued", {}).get("date-parts") or [[None]])[0]
+    return {
+        "doi": work.get("DOI") or "",
+        "title": (work.get("title") or [""])[0],
+        "year": parts[0] if parts else None,
+        "authors": [(a.get("family") or a.get("name") or "") for a in (work.get("author") or [])],
+        "abstract": match.clean_abstract(work.get("abstract")),
+    }
 
 
-def _openalex_abstract(work):
-    idx = work.get("abstract_inverted_index")
-    if not idx:
+def _openalex_candidate(work):
+    if not work:
         return None
-    positions = []
-    for word, locs in idx.items():
-        for loc in locs:
-            positions.append((loc, word))
-    positions.sort()
-    return " ".join(w for _, w in positions)
+    index = work.get("abstract_inverted_index")
+    abstract = ""
+    if index:
+        positions = [(loc, word) for word, locs in index.items() for loc in locs]
+        positions.sort()
+        abstract = match.clean_abstract(" ".join(w for _, w in positions))
+    authorships = work.get("authorships") or []
+    return {
+        "doi": (work.get("doi") or "").replace("https://doi.org/", ""),
+        "title": work.get("title") or work.get("display_name") or "",
+        "year": work.get("publication_year"),
+        "authors": [(a.get("author") or {}).get("display_name") or "" for a in authorships],
+        "abstract": abstract,
+    }
+
+
+def _lookup_by_doi(doi, source):
+    """Fetch the record for a DOI we already hold. No verification needed —
+    a DOI is an identifier, so there is nothing to disambiguate."""
+    quoted = urllib.parse.quote(doi.strip())
+    if source == "openalex":
+        return _openalex_candidate(_try_json("https://api.openalex.org/works/doi:" + quoted))
+    data = _try_json("https://api.crossref.org/works/" + quoted)
+    return _crossref_candidate((data or {}).get("message"))
+
+
+def _search_candidates(title, source, rows=4):
+    """Ask for several results, not one: the best *match* is rarely the top hit,
+    and with rows=1 there is nothing to reject in favour of."""
+    if source == "openalex":
+        q = urllib.parse.urlencode({"search": title[:200], "per-page": rows})
+        data = _try_json("https://api.openalex.org/works?" + q)
+        return [_openalex_candidate(w) for w in (data or {}).get("results", [])]
+    q = urllib.parse.urlencode({"query.bibliographic": title[:200], "rows": rows})
+    data = _try_json("https://api.crossref.org/works?" + q)
+    return [_crossref_candidate(w) for w in (data or {}).get("message", {}).get("items", [])]
+
+
+def _value_for(field, candidate):
+    if field == "DOI":
+        return candidate.get("doi") or None
+    if field == "date":
+        return str(candidate["year"]) if candidate.get("year") else None
+    if field == "abstractNote":
+        text = candidate.get("abstract") or ""
+        # A one-line "abstract" is a stub, not a summary.
+        return text if len(text) > 80 else None
+    return None
 
 
 def cmd_enrich(args):
@@ -337,41 +381,65 @@ def cmd_enrich(args):
         targets = targets[: args.limit]
     info("Looking up %d item(s) missing '%s' via %s..." % (len(targets), field, args.source))
     edits = []
+    by_doi = 0
+    rejected = {"title": 0, "year": 0, "author": 0, "no-result": 0, "no-value": 0}
     for it in targets:
         title = it.get("title") or ""
-        if not title:
+        existing_doi = (it.get("doi") or "").strip()
+        candidate, similarity, how = None, None, "doi"
+        if existing_doi and field != "DOI":
+            # The item already carries an identifier: use it. This is exact, and
+            # it is the only path with no chance of matching the wrong work.
+            candidate = _lookup_by_doi(existing_doi, args.source)
+            if candidate:
+                by_doi += 1
+        elif title:
+            how = "search"
+            creators = it.get("creators") or []
+            surname = creators[0].split()[-1] if creators and creators[0].split() else ""
+            best_reason = "no-result"
+            for cand in _search_candidates(title, args.source):
+                if not cand:
+                    continue
+                ok, similarity, reason = match.verify(title, it.get("date") or it.get("year"),
+                                                      surname, cand,
+                                                      min_similarity=args.min_similarity)
+                if ok:
+                    candidate = cand
+                    break
+                best_reason = reason
+            if not candidate:
+                rejected[best_reason] = rejected.get(best_reason, 0) + 1
+        if not candidate:
+            if how == "doi":
+                rejected["no-result"] += 1
+            time.sleep(args.delay)
             continue
-        value = None
-        if args.source == "openalex" or field == "abstractNote":
-            work = _openalex_lookup(title)
-            if work:
-                if field == "DOI":
-                    value = (work.get("doi") or "").replace("https://doi.org/", "")
-                elif field == "date":
-                    value = str(work.get("publication_year") or "") or None
-                elif field == "abstractNote":
-                    value = _openalex_abstract(work)
-        else:  # crossref
-            work = _crossref_lookup(title)
-            if work:
-                if field == "DOI":
-                    value = work.get("DOI")
-                elif field == "date":
-                    parts = (work.get("issued", {}).get("date-parts") or [[None]])[0]
-                    value = str(parts[0]) if parts and parts[0] else None
-                elif field == "abstractNote":
-                    value = work.get("abstract")
+        value = _value_for(field, candidate)
         if value:
-            edits.append({"key": it["key"], "set": {field: value}, "_title": title, "_value": value})
+            edits.append({"key": it["key"], "set": {field: value}, "_title": title,
+                          "_value": value, "_how": how, "_sim": similarity,
+                          "_cand": candidate.get("title") or ""})
+        else:
+            rejected["no-value"] += 1
         time.sleep(args.delay)
 
+    skipped = sum(rejected.values())
+    if skipped:
+        info("Rejected %d candidate(s): %s" % (
+            skipped, ", ".join("%s %d" % (k, v) for k, v in rejected.items() if v)))
+    if by_doi:
+        info("%d item(s) resolved by their existing DOI (exact)." % by_doi)
     if not edits:
         print("No values found to fill.")
         return
     if args.dry_run:
         print("DRY-RUN — would set '%s' on %d item(s):" % (field, len(edits)))
         for e in edits[: args.samples]:
-            print("  %-10s %s\n      → %s" % (e["key"], (e["_title"] or "")[:60], str(e["_value"])[:80]))
+            print("  %-10s %s" % (e["key"], (e["_title"] or "")[:60]))
+            if e["_how"] == "search":
+                print("      matched %.3f  %s" % (e["_sim"] or 0, (e["_cand"] or "")[:60]))
+            print("      → %s" % str(e["_value"])[:80])
         return
     confirm_write(args, "This sets '%s' on %d item(s) from %s." % (field, len(edits), args.source))
     clean = [{"key": e["key"], "set": e["set"]} for e in edits]
@@ -381,7 +449,6 @@ def cmd_enrich(args):
     print("Enriched %d item(s) with '%s'." % (r["applied"], field))
     if op_id:
         info("Undo with:  zot undo %s" % op_id)
-
 
 # --------------------------------------------------------------------------- #
 # tag normalize
@@ -445,3 +512,144 @@ def cmd_tag_normalize(args):
     print("Renamed %d tag(s)." % res["renamed"])
     if res.get("errors"):
         info("errors: " + "; ".join(map(str, res["errors"])))
+
+
+# --------------------------------------------------------------------------- #
+# tag from-collections
+# --------------------------------------------------------------------------- #
+# Libraries that predate tagging keep their meaning in the folder tree: a paper
+# filed under "Infodemia en Twitter / Machine learning" is tagged by its
+# location and nowhere else. That knowledge is real, and mechanical to harvest —
+# which is the point, because hand-tagging a few thousand items never happens.
+#
+# The one thing that has to be got right is scope. Matching the whole path makes
+# the top of the tree shout over everything below it: with a root branch called
+# "@Digitalización", a naive pass tagged 1318 of 3019 items `#digitalización`, a
+# label so broad it separates nothing. Container segments are therefore dropped
+# before matching, so a tag comes from what an item is *about*, not from which
+# drawer it lives in.
+def tags_for_path(path, rules, containers=()):
+    """Tags implied by one collection path (e.g. "Investigacion / Infodemia").
+
+    `rules` is a list of {"match": regex, "tags": [...]}; matching is
+    case- and accent-insensitive. Pure and regex-only — no Zotero, no network.
+    """
+    # Split first, normalise after: norm_title drops the "/" separators, so
+    # normalising the whole path would collapse it into a single segment.
+    #
+    # Container names are compared with punctuation intact, because that is
+    # often the only thing telling a container from a real topic: the branch
+    # "@Digitalización" and the leaf "Digitalización" are different collections,
+    # and norm_title would make them identical.
+    def container_key(segment):
+        return match.strip_accents(segment).strip().lower()
+
+    raw = [s for s in str(path or "").split("/")]
+    skip = {container_key(c) for c in containers}
+    kept = [match.norm_title(s) for s in raw if container_key(s) not in skip]
+    kept = [s for s in kept if s]
+    haystack = " / ".join(kept) if kept else " / ".join(
+        s for s in (match.norm_title(x) for x in raw) if s)
+    found = set()
+    for rule in rules:
+        try:
+            if re.search(rule["match"], haystack):
+                found.update(rule.get("tags") or [])
+        except re.error as exc:
+            raise ValueError("bad regex %r: %s" % (rule.get("match"), exc)) from exc
+    return found
+
+
+def load_tag_rules(path):
+    """Read the rules file: {"containers": [...], "rules": [{match, tags}]}."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        die("cannot read rules file %s: %s" % (path, exc))
+    rules = data.get("rules")
+    if not isinstance(rules, list) or not rules:
+        die("%s: needs a non-empty 'rules' list of {match, tags}" % path)
+    for rule in rules:
+        if not rule.get("match") or not rule.get("tags"):
+            die("%s: every rule needs 'match' and 'tags'" % path)
+    return data.get("containers") or [], rules
+
+
+_PATHS_JS = r"""
+var lib = Zotero.Libraries.userLibraryID;
+var cache = {};
+function cpath(id) {
+  if (cache[id]) return cache[id];
+  var c = Zotero.Collections.get(id);
+  if (!c) return '';
+  var p = c.name, parent = c.parentID, guard = 0;
+  while (parent && guard++ < 12) {
+    var pc = Zotero.Collections.get(parent);
+    if (!pc) break;
+    p = pc.name + ' / ' + p;
+    parent = pc.parentID;
+  }
+  cache[id] = p;
+  return p;
+}
+var all = await Zotero.Items.getAll(lib, true, false, false);
+var out = [];
+for (var it of all) {
+  if (!it.isRegularItem()) continue;
+  out.push({ key: it.key, paths: it.getCollections().map(cpath),
+             tags: it.getTags().map(function (t) { return t.tag; }) });
+}
+return { items: out };
+"""
+
+
+def cmd_tag_from_collections(args):
+    from ..config import require_config
+    cfg = require_config(args)
+    containers, rules = load_tag_rules(args.rules)
+    res = run_js(cfg, _PATHS_JS, label="tag:paths")
+    edits, counts = [], {}
+    for it in res["items"]:
+        have = set(it["tags"])
+        wanted = set()
+        for path in it["paths"]:
+            wanted |= tags_for_path(path, rules, containers)
+        new = sorted(wanted - have)
+        if not new:
+            continue
+        edits.append({"key": it["key"], "addTags": new})
+        for tag in new:
+            counts[tag] = counts.get(tag, 0) + 1
+
+    if not edits:
+        print("No new tags implied by the collection tree.")
+        return
+    total = len(res["items"])
+    print("%d of %d item(s) would gain tags:" % (len(edits), total))
+    for tag, n in sorted(counts.items(), key=lambda kv: -kv[1])[: args.samples]:
+        share = 100.0 * n / total
+        flag = "   ⚠ covers %.0f%% of the library" % share if share > 40 else ""
+        print("  %5d  %s%s" % (n, tag, flag))
+    if len(counts) > args.samples:
+        info("  ... (%d more tag(s))" % (len(counts) - args.samples))
+
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            for e in edits:
+                fh.write(json.dumps(e, ensure_ascii=False) + "\n")
+        print("Wrote %d edit(s) to %s — apply with: zot apply %s" % (len(edits), args.out, args.out))
+        return
+    if args.dry_run:
+        info("Re-run with --out FILE to save the plan, or --apply to write it now.")
+        return
+    if not args.apply:
+        info("Nothing written. Use --apply to write, or --out FILE for a reviewable plan.")
+        return
+    confirm_write(args, "This adds tags to %d item(s)." % len(edits))
+    op_id = _snapshot(cfg, [e["key"] for e in edits], "tag-from-collections")
+    body = _APPLY_BODY % json.dumps(edits)
+    r = run_js(cfg, body, label="tag-from-collections:apply")
+    print("Tagged %d item(s)." % r["applied"])
+    if op_id:
+        info("Undo with:  zot undo %s" % op_id)

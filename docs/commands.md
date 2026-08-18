@@ -1,6 +1,6 @@
 # Command reference
 
-_Auto-generated from the `zot` CLI (v0.7.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.8.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 
@@ -239,15 +239,17 @@ zot add [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 ```
 zot dedupe [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
                   [--debug] [-y] [--json] [--by {title,doi}]
-                  [--collection COLLECTION] [--merge] [--fuzzy]
-                  [--threshold THRESHOLD] [--samples SAMPLES]
+                  [--collection COLLECTION] [--plan FILE] [--merge] [--force]
+                  [--fuzzy] [--threshold THRESHOLD] [--samples SAMPLES]
 ```
 
 | Argument | Description |
 |----------|-------------|
 | `--by` |  |
 | `--collection` | limit to a collection (key or name); else whole library |
-| `--merge` | merge each group (keeps oldest as master) |
+| `--plan` | write the merge plan as JSONL for review, then run `zot merge --from FILE` |
+| `--merge` | merge the confident groups now (oldest is master); merging is NOT undoable |
+| `--force` | with --merge, also merge groups whose author/year/edition disagree |
 | `--fuzzy` | also group near-identical titles (Levenshtein) |
 | `--threshold` | similarity threshold for --fuzzy (0-1) |
 | `--samples` |  |
@@ -256,9 +258,10 @@ zot dedupe [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 
 ```
 zot tag [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
-               [--debug] [-y] [--json] [--new NEW] [--map MAP] [--dry-run]
-               [--samples SAMPLES]
-               {add,rm,rename,purge,normalize} [tag] [keys ...]
+               [--debug] [-y] [--json] [--new NEW] [--map MAP] [--rules RULES]
+               [--out FILE] [--apply] [--dry-run] [--samples SAMPLES]
+               {add,rm,rename,purge,normalize,from-collections} [tag]
+               [keys ...]
 ```
 
 | Argument | Description |
@@ -268,7 +271,10 @@ zot tag [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 | `keys` | item keys/citekeys (for add/rm; '-' reads stdin) |
 | `--new` | new tag name (for rename) |
 | `--map` | CSV old,new mapping file (for normalize) |
-| `--dry-run` | preview (for normalize) |
+| `--rules` | JSON rules file (for from-collections): {containers:[...], rules:[{match, tags}]} |
+| `--out` | write the plan as JSONL for `zot apply` (for from-collections) |
+| `--apply` | write the tags now, undoably (for from-collections) |
+| `--dry-run` | preview (for normalize / from-collections) |
 | `--samples` |  |
 
 ### `zot set`
@@ -389,7 +395,8 @@ zot undo [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 zot enrich [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
                   [--debug] [-y] [--json] --field {doi,date,abstract}
                   [--source {crossref,openalex}] [--collection COLLECTION]
-                  [--limit LIMIT] [--delay DELAY] [--dry-run]
+                  [--limit LIMIT] [--delay DELAY]
+                  [--min-similarity MIN_SIMILARITY] [--dry-run]
                   [--samples SAMPLES]
 ```
 
@@ -400,6 +407,7 @@ zot enrich [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 | `--collection` | limit to a collection (key or name) |
 | `--limit` | cap items looked up (0 = no cap) |
 | `--delay` | seconds between API calls (be polite) |
+| `--min-similarity` | title-similarity floor for accepting a search hit (0-1); items with no year and no author need 0.98 regardless |
 | `--dry-run` | preview, don't write |
 | `--samples` |  |
 
@@ -544,6 +552,20 @@ zot pdf-prep [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID]
 | `--timeout` | seconds to allow OCR per item |
 | `--dry-run` | analyse and report the plan; touch nothing |
 
+### `zot merge`
+
+```
+zot merge [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+                 [--debug] [-y] [--json] --from FILE [--dry-run]
+                 [--samples SAMPLES]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `--from` | JSONL merge plan, or '-' for stdin |
+| `--dry-run` | preview, don't merge |
+| `--samples` |  |
+
 ### `zot attach`
 
 ```
@@ -575,3 +597,51 @@ zot pdf-fetch [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID]
 | `keys` | item keys or BBT citekeys; '-' reads them from stdin |
 | `--collection` | every item in a collection (key or name) |
 | `--retry-with-pdf` | also try items that already have a PDF attached |
+
+### `zot disk`
+
+```
+zot disk [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+                [--debug] [-y] [--json] [--min-mb MIN_MB] [--samples SAMPLES]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `--min-mb` | threshold for listing heavy PDFs (default 25) |
+| `--samples` |  |
+
+### `zot shrink`
+
+```
+zot shrink [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+                  [--debug] [-y] [--json] [--min-mb MIN_MB] [--dpi DPI]
+                  [--mono-dpi MONO_DPI] [--max-ratio MAX_RATIO] [--out DIR]
+                  [--timeout TIMEOUT] [--dry-run]
+                  [keys ...]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `keys` | item or attachment keys/citekeys ('-' reads stdin); omit to sweep everything over --min-mb |
+| `--min-mb` | with no keys, shrink every PDF at least this big (default 25) |
+| `--dpi` | target resolution for colour/grey images (default 200) |
+| `--mono-dpi` | target resolution for bitonal images (default 300) |
+| `--max-ratio` | keep the original unless the rewrite is at most this fraction of its size (default 0.80) |
+| `--out` | write results to DIR instead of replacing in place |
+| `--timeout` | seconds to allow per file |
+| `--dry-run` | report the plan, touch nothing |
+
+### `zot gc`
+
+```
+zot gc [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
+              [--debug] [-y] [--json] [--orphans] [--snapshots]
+              [--empty-trash] [--dry-run]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `--orphans` | attachments with no parent item |
+| `--snapshots` | saved page snapshots (the item keeps its URL) |
+| `--empty-trash` | also erase everything already in the trash — PERMANENT |
+| `--dry-run` | report, don't write |

@@ -19,7 +19,7 @@ os.environ["ZOTERO_AGENT_NO_AUDIT"] = "1"  # don't touch ~/.local/state during t
 
 from fake_zotero import FakeZotero  # noqa: E402
 
-from zotero_agent import assets, audit, cli, http, jslib, resolve  # noqa: E402
+from zotero_agent import assets, audit, cli, http, jslib, match, resolve  # noqa: E402
 from zotero_agent.commands import admin, features, read, write  # noqa: E402
 from zotero_agent.constants import VERSION  # noqa: E402
 from zotero_agent.http import is_loopback  # noqa: E402
@@ -121,7 +121,16 @@ class TestFeaturesPure(unittest.TestCase):
 
     def test_openalex_abstract_reconstruction(self):
         work = {"abstract_inverted_index": {"Hello": [0], "world": [1], "again": [2]}}
-        self.assertEqual(features._openalex_abstract(work), "Hello world again")
+        self.assertEqual(features._openalex_candidate(work)["abstract"], "Hello world again")
+
+    def test_crossref_candidate_strips_jats_from_the_abstract(self):
+        work = {"DOI": "10.1/x", "title": ["A paper"],
+                "issued": {"date-parts": [[2020]]}, "author": [{"family": "Ojeda"}],
+                "abstract": "<jats:p>Abstract: the point.</jats:p>"}
+        cand = features._crossref_candidate(work)
+        self.assertEqual(cand["abstract"], "the point.")
+        self.assertEqual(cand["year"], 2020)
+        self.assertEqual(cand["authors"], ["Ojeda"])
 
     def test_load_edits_parses_jsonl(self):
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as fh:
@@ -214,15 +223,18 @@ class TestDryRunNeverWrites(unittest.TestCase):
 
     def test_enrich_dry_run_scans_but_never_applies(self):
         scan = {"field": "DOI", "total": 1, "missing": 1,
-                "items": [{"key": "ABCD1234", "title": "A paper", "type": "article"}]}
+                "items": [{"key": "ABCD1234", "title": "A paper", "type": "article",
+                           "date": "2020", "creators": ["Ada Ojeda"], "doi": ""}]}
+        candidate = {"doi": "10.1/x", "title": "A paper", "year": 2020,
+                     "authors": ["Ojeda"], "abstract": ""}
         with FakeZotero(token="t", bridge_results={"var miss": scan}) as srv:
-            with mock.patch.object(features, "_crossref_lookup",
-                                   return_value={"DOI": "10.1/x"}):
+            with mock.patch.object(features, "_search_candidates", return_value=[candidate]):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
                     features.cmd_enrich(_args(field="doi", source="crossref", collection=None,
                                               dry_run=True, delay=0, base=srv.base,
-                                              token="t", user_id=1))
+                                              token="t", user_id=1,
+                                              min_similarity=match.MIN_TITLE_SIMILARITY))
         # exactly one bridge call — the scan — and never the apply body
         self.assertEqual(len(srv.last_codes), 1)
         self.assertIn("var miss", srv.last_codes[0])

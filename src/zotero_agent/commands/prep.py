@@ -204,6 +204,14 @@ def _process_one(cfg, args, key, workdir):
             cut = 0.5
             result["gutterFallback"] = True
 
+        if args.no_ocr and not do_split:
+            # Without a split and without OCR there is no work left to do: the
+            # old code copied the file byte for byte and attached it as if
+            # something had happened. Shrinking lives in `zot shrink` now.
+            result["status"] = "nothing-to-do"
+            result["hint"] = "already single-page; to reclaim disk use: zot shrink %s" % item["key"]
+            return result
+
         if args.dry_run:
             result["status"] = "would-process"
             if existing:
@@ -332,6 +340,10 @@ def _print_one(result):
               % (PREP_TAG, result.get("existing")))
     elif status == "no-gutter":
         print("  skipped: no confident gutter; pass --gutter FRAC or --no-split")
+    elif status == "nothing-to-do":
+        print("  nothing to do: --no-ocr on a single-page PDF only ever copied the file")
+        if result.get("hint"):
+            print("  %s" % result["hint"])
     elif status == "would-process":
         plan = result.get("plan") or {}
         if result.get("existing"):

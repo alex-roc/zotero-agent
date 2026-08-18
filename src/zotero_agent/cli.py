@@ -3,9 +3,10 @@
 import argparse
 import urllib.error
 
-from . import __version__
-from .commands import admin, features, prep, read, toc, write
+from . import __version__, match
+from .commands import admin, features, prep, read, storage, toc, write
 from .constants import IS_DEV_TREE
+from .pdf import shrink as shrink_defaults
 from .term import ZotError, die, set_verbosity
 
 
@@ -151,21 +152,39 @@ def build_parser():
     sp.add_argument("--check-duplicate", dest="check_duplicate", action="store_true",
                     help="refuse to add if a close title+author match is already in the library")
 
-    sp = add("dedupe", write.cmd_dedupe, "find (and optionally merge) duplicate items")
+    sp = add("dedupe", write.cmd_dedupe, "find duplicate items; --plan writes a reviewable merge plan")
     sp.add_argument("--by", choices=["title", "doi"], default="title")
     sp.add_argument("--collection", help="limit to a collection (key or name); else whole library")
-    sp.add_argument("--merge", action="store_true", help="merge each group (keeps oldest as master)")
+    sp.add_argument("--plan", metavar="FILE",
+                    help="write the merge plan as JSONL for review, then run `zot merge --from FILE`")
+    sp.add_argument("--merge", action="store_true",
+                    help="merge the confident groups now (oldest is master); merging is NOT undoable")
+    sp.add_argument("--force", action="store_true",
+                    help="with --merge, also merge groups whose author/year/edition disagree")
     sp.add_argument("--fuzzy", action="store_true", help="also group near-identical titles (Levenshtein)")
     sp.add_argument("--threshold", type=float, default=0.9, help="similarity threshold for --fuzzy (0-1)")
     sp.add_argument("--samples", type=int, default=10)
 
+    sp = add("merge", write.cmd_merge, "execute a merge plan from `zot dedupe --plan` (NOT undoable)")
+    sp.add_argument("--from", dest="source", required=True, metavar="FILE",
+                    help="JSONL merge plan, or '-' for stdin")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="preview, don't merge")
+    sp.add_argument("--samples", type=int, default=20)
+
     sp = add("tag", write.cmd_tag, "manage tags: add/rm on items, rename/purge, or normalize")
-    sp.add_argument("action", choices=["add", "rm", "rename", "purge", "normalize"])
+    sp.add_argument("action", choices=["add", "rm", "rename", "purge", "normalize", "from-collections"])
     sp.add_argument("tag", nargs="?", help="the tag (for add/rm/rename)")
     sp.add_argument("keys", nargs="*", help="item keys/citekeys (for add/rm; '-' reads stdin)")
     sp.add_argument("--new", help="new tag name (for rename)")
     sp.add_argument("--map", help="CSV old,new mapping file (for normalize)")
-    sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="preview (for normalize)")
+    sp.add_argument("--rules", help="JSON rules file (for from-collections): "
+                                    "{containers:[...], rules:[{match, tags}]}")
+    sp.add_argument("--out", metavar="FILE",
+                    help="write the plan as JSONL for `zot apply` (for from-collections)")
+    sp.add_argument("--apply", action="store_true",
+                    help="write the tags now, undoably (for from-collections)")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="preview (for normalize / from-collections)")
     sp.add_argument("--samples", type=int, default=20)
 
     sp = add("set", write.cmd_set, "set a field on one or more items")
@@ -196,6 +215,10 @@ def build_parser():
     sp.add_argument("--collection", help="limit to a collection (key or name)")
     sp.add_argument("--limit", type=int, default=0, help="cap items looked up (0 = no cap)")
     sp.add_argument("--delay", type=float, default=0.3, help="seconds between API calls (be polite)")
+    sp.add_argument("--min-similarity", dest="min_similarity", type=float, default=match.MIN_TITLE_SIMILARITY,
+                    help="title-similarity floor for accepting a search hit (0-1); "
+                         "items with no year and no author need %.2f regardless"
+                         % match.MIN_TITLE_SIMILARITY_UNCORROBORATED)
     sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="preview, don't write")
     sp.add_argument("--samples", type=int, default=20)
 
@@ -258,6 +281,39 @@ def build_parser():
 
     sp = add("backup", admin.cmd_backup, "snapshot zotero.sqlite to a timestamped file")
     sp.add_argument("--dir", help="destination dir (default: ~/.config/zotero-agent/backups)")
+
+    sp = add("disk", storage.cmd_disk, "where the attachment store's gigabytes are")
+    sp.add_argument("--min-mb", dest="min_mb", type=int, default=25,
+                    help="threshold for listing heavy PDFs (default 25)")
+    sp.add_argument("--samples", type=int, default=15)
+
+    sp = add("shrink", storage.cmd_shrink,
+             "downsample oversized PDFs in place — needs ghostscript + qpdf")
+    sp.add_argument("keys", nargs="*", help="item or attachment keys/citekeys ('-' reads stdin); "
+                                            "omit to sweep everything over --min-mb")
+    sp.add_argument("--min-mb", dest="min_mb", type=int, default=25,
+                    help="with no keys, shrink every PDF at least this big (default 25)")
+    sp.add_argument("--dpi", type=int, default=shrink_defaults.DEFAULT_DPI,
+                    help="target resolution for colour/grey images (default %d)"
+                         % shrink_defaults.DEFAULT_DPI)
+    sp.add_argument("--mono-dpi", dest="mono_dpi", type=int, default=shrink_defaults.DEFAULT_MONO_DPI,
+                    help="target resolution for bitonal images (default %d)"
+                         % shrink_defaults.DEFAULT_MONO_DPI)
+    sp.add_argument("--max-ratio", dest="max_ratio", type=float,
+                    default=shrink_defaults.DEFAULT_MAX_RATIO,
+                    help="keep the original unless the rewrite is at most this fraction "
+                         "of its size (default %.2f)" % shrink_defaults.DEFAULT_MAX_RATIO)
+    sp.add_argument("--out", metavar="DIR", help="write results to DIR instead of replacing in place")
+    sp.add_argument("--timeout", type=int, default=1800, help="seconds to allow per file")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="report the plan, touch nothing")
+
+    sp = add("gc", storage.cmd_gc, "trash attachments nothing points at (orphans, snapshots)")
+    sp.add_argument("--orphans", action="store_true", help="attachments with no parent item")
+    sp.add_argument("--snapshots", action="store_true",
+                    help="saved page snapshots (the item keeps its URL)")
+    sp.add_argument("--empty-trash", dest="empty_trash", action="store_true",
+                    help="also erase everything already in the trash — PERMANENT")
+    sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="report, don't write")
 
     sp = add("lint", read.cmd_lint, "report data-quality issues in the library")
     sp.add_argument("--samples", type=int, default=10, help="examples to show per issue")
