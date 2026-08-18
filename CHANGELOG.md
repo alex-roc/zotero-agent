@@ -6,7 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-17
+
 ### Fixed
+- **`zot shrink KEY` crashed on every explicit key.** `keys_from()` takes only
+  the CLI/stdin list — resolving citekeys is a separate `resolve_key()` step, as
+  prep and write both do it — so calling `keys_from(cfg, keys)` raised
+  `TypeError: keys_from() takes 1 positional argument but 2 were given`. Only the
+  `--min-mb` sweep had ever been run, which is how a whole argument path shipped
+  broken. Now covered by tests for attachment keys, parent keys and the sweep.
+
 - **`zot disk` reported My Library's total as if it were the whole store.** Group
   libraries keep their files in the same `storage/` directory but sync through
   Zotero's servers rather than WebDAV, so `du` on the data directory can be far
