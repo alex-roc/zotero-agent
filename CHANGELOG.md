@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`zot disk` reported My Library's total as if it were the whole store.** Group
+  libraries keep their files in the same `storage/` directory but sync through
+  Zotero's servers rather than WebDAV, so `du` on the data directory can be far
+  larger than what `disk` prints — 14 GB against 9.4 GB on one library. It now
+  says whose attachments it counted, so nobody goes looking for "missing" GB or,
+  worse, mistakes 1176 group-library folders for strays to sweep up. The
+  "orphans" row is relabelled "parentless" and no longer claims those files are
+  invisible in the UI.
+
+
 ## [0.8.1] - 2026-08-17
 
 ### Fixed

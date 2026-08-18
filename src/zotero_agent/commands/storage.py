@@ -123,12 +123,12 @@ def cmd_disk(args):
         dump_json(summary)
         return
 
-    print("Attachment store: %s across %d file(s)" % (_human(total), len(atts)))
+    print("My Library attachments: %s across %d file(s)" % (_human(total), len(atts)))
     print("  %-12s %5d  %10s" % ("PDFs", len(pdfs), _human(summary["pdfs"]["bytes"])))
     print("  %-12s %5d  %10s   (page snapshots — the item keeps its URL without them)"
           % ("snapshots", len(snapshots), _human(summary["snapshots"]["bytes"])))
-    print("  %-12s %5d  %10s   (no parent item — invisible in the UI)"
-          % ("orphans", len(orphans), _human(summary["orphans"]["bytes"])))
+    print("  %-12s %5d  %10s   (no parent item — Zotero still lists them as items)"
+          % ("parentless", len(orphans), _human(summary["orphans"]["bytes"])))
     print("  %-12s %5d  %10s   (%d item(s) in the trash)"
           % ("in trash", len(trashed), _human(summary["trashed"]["bytes"]), trashed_items))
     if heavy:
@@ -142,6 +142,10 @@ def cmd_disk(args):
         info("Reclaim with:  zot shrink --min-mb %d --dry-run" % args.min_mb)
     if snapshots or orphans or trashed:
         info("Clean up with: zot gc --dry-run")
+    # Group libraries keep their files in the same storage/ directory but sync
+    # through Zotero's servers, not WebDAV — so `du` on the data directory can be
+    # far larger than this, and those files are NOT strays to be swept up.
+    info("Counts My Library only; group-library files share storage/ and are not included.")
 
 
 # --------------------------------------------------------------------------- #
