@@ -6,6 +6,85 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-17
+
+### Fixed
+- **`zot enrich` no longer writes the wrong DOI.** The Crossref lookup asked for
+  `rows=1` and wrote `items[0]` with no check that the record was the item in
+  hand — and Crossref always answers. Measured on a real library, **6 of 6 sampled
+  proposals were different works**: "Mujeres libres en política" resolved to a
+  Brill human-rights dataset, "Activismo en las redes sociales online" to "La
+  invención del ciberespacio". A wrong DOI is worse than an empty field, because
+  nothing surfaces it until someone follows the citation.
+
+  Every search hit now has to clear three independent signals (`match.py`, pure
+  and unit-tested): title similarity ≥ 0.92, publication year within ±1 when both
+  are known, and the item's first-author surname among the candidate's authors.
+  An item with neither year nor author needs 0.98, since title similarity is then
+  the only evidence — at 0.94 the check still accepted "The OECD Going Digital
+  Measurement Roadmap" as its own *2026* edition. Rejections are counted and
+  reported by cause; on a 638-item run, 418 were rejected.
+
+  Items that already carry a DOI are now looked up **by that DOI** instead of by
+  title, which is exact. Crossref abstracts are stripped of their JATS markup
+  before being saved (they used to arrive with `<jats:p>` intact), and
+  `--source crossref` is honoured for abstracts instead of silently using
+  OpenAlex.
+
+- **`zot pdf-prep --no-ocr` no longer attaches a byte-for-byte copy.** With
+  nothing to split and no OCR, prep called `shutil.copy2` and attached the
+  result, reporting `150.6 MB -> 150.6 MB (+0%)`; `--profile small` was never
+  consulted, because the profiles only reach `ocrmypdf`. The help promised
+  "split and optimise only" and no optimising existed. That path now reports
+  `nothing-to-do` and points at `zot shrink`.
+
+### Added
+- **`zot shrink` — reclaim disk without touching the text layer.** Downsamples a
+  PDF's page images with Ghostscript (200 dpi by default: about a fifth of the
+  original for a scanned book, still legible down to pencil marginalia). The
+  rewrite replaces the original only when `qpdf` confirms the page count survived
+  and the file is at most 80% of its old size, so annotations still anchor and
+  files that are already compact are left alone — over 35 real books, 13 shrank
+  and 22 were untouched. Needs `ghostscript` and `qpdf`.
+
+- **`zot disk` — where the attachment store's gigabytes are**: heavy PDFs, page
+  snapshots, orphan attachments, and what is sitting in the trash. Answering
+  "why is my library 16 GB?" previously meant hand-writing JS.
+
+- **`zot gc` — drop what nothing points at**: orphan attachments (no parent item,
+  invisible in the UI) and saved page snapshots (the item keeps its URL).
+  Attachments carrying highlights are never binned, because annotations belong to
+  the attachment and do not survive it. `--empty-trash` is permanent.
+
+- **`zot dedupe --plan` and `zot merge --from` — propose, review, then merge.**
+  `Zotero.Items.merge` cannot be undone, and grouping by title alone is wrong
+  more often than right: on a real library **20 of 46 groups were distinct
+  works** (five different *Estadística* textbooks by Spiegel and Triola; the 3rd
+  and 4th editions of Scott's *Social Network Analysis*). `dedupe` now scores
+  each group and flags what disagrees, `--plan` writes a reviewable JSONL, and
+  `merge --from` executes what survived. `--merge` alone now touches only the
+  confident groups; `--force` restores the old all-or-nothing behaviour.
+
+  A group is confident when the author matches (by containment, so "Banda" and
+  "Banda, Juan M." are one person), the edition matches, the years are within
+  ±1, and no two *formal* item types disagree — Shannon's 1937 thesis and its
+  1938 paper stay separate, while a webpage/blogPost pair is treated as the same
+  thing imported twice. Merging across types now sets the secondary's type to the
+  master's first, which is what made webpage↔blogPost merges fail.
+
+  The plan carries edition, publisher, creators, and PDF/note counts, because
+  key/title/year is exactly what is not enough to decide.
+
+- **`zot tag from-collections --rules rules.json`** — harvest the meaning a
+  pre-tagging library keeps in its folder tree. On a 3019-item library this
+  tagged 2843 items in one pass. Structural branches go in `containers` and are
+  excluded from matching, or the top of the tree shouts over everything beneath
+  it: counting the root branch tagged 1318 of 3019 items `#digitalización`, a
+  label that separates nothing. The command warns when a tag would cover more
+  than 40% of the library. `--out` writes a reviewable plan; `--apply` writes it
+  undoably.
+
+
 ## [0.7.0] - 2026-08-17
 
 ### Added
