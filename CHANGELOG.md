@@ -6,6 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-17
+
+### Fixed
+- **`zot gc --orphans` offered to delete real items.** A parentless attachment is
+  not litter: Zotero lists it in the items pane like any other row, and dragging a
+  PDF in without metadata is how a large part of a working library gets built. On
+  the library this was first run against, **all 268 "orphans" were filed in a
+  collection and were books** — an *Encyclopedia of Computer Science*, Koyré,
+  municipal development plans — 1.1 GB that the command proposed to bin, and the
+  docs described as "invisible in the UI".
+
+  `--orphans` now only takes attachments that *nothing* claims: no parent, no
+  collection, no tags, no annotations. Anything else parentless is reported as
+  kept. The rule is a pure function (`is_disposable_orphan`) with tests for each
+  claim, and the help text and skill no longer describe filed attachments as
+  invisible.
+
+- **`zot gc` timed out on large sweeps.** One `saveTx()` per item opens one
+  transaction per item; 983 snapshots died at ~924 with the bridge timing out
+  mid-run (leaving a consistent but partial result). The loop now runs inside a
+  single `Zotero.DB.executeTransaction`.
+
+
 ## [0.8.0] - 2026-08-17
 
 ### Fixed

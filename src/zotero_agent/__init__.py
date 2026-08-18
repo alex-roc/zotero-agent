@@ -11,4 +11,4 @@ Copyright (C) 2026 zotero-agent contributors.
 Licensed under the GNU Affero General Public License v3 or later; see LICENSE.
 """
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
