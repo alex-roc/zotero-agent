@@ -52,6 +52,8 @@ for (var it of all) {
     linked: it.attachmentLinkMode === Zotero.Attachments.LINK_MODE_LINKED_FILE,
     size: size,
     annotations: countAnnotations(it),
+    collections: it.getCollections ? it.getCollections().length : 0,
+    tags: it.getTags ? it.getTags().length : 0,
     deleted: !!it.deleted,
     hasFile: !!path
   });
@@ -64,6 +66,22 @@ return { attachments: out, trashedItems: trashed };
 def _inventory(cfg):
     res = run_js(cfg, _INVENTORY_JS, label="storage:inventory") or {}
     return res.get("attachments", []), res.get("trashedItems", 0)
+
+
+# A top-level attachment is NOT junk. Zotero shows it in the items list like any
+# other row, and dragging a PDF in without metadata is how a lot of libraries are
+# built: on one real library all 268 "orphans" were filed in a collection and
+# were books — an encyclopedia, Koyré, municipal development plans. Deleting them
+# would have destroyed 1.1 GB of content the user reads.
+#
+# So being parentless is not enough. Something is disposable only when nothing
+# else claims it either: no collection, no tags, no annotations.
+def is_disposable_orphan(att):
+    return (not att.get("parentKey")
+            and not att.get("collections")
+            and not att.get("tags")
+            and not att.get("annotations")
+            and not att.get("deleted"))
 
 
 def _human(nbytes):
@@ -243,10 +261,14 @@ _GC_JS = r"""
 var KEYS = %s, emptyTrash = %s;
 var lib = Zotero.Libraries.userLibraryID;
 var trashed = 0;
-for (var k of KEYS) {
-  var it = await Zotero.Items.getByLibraryAndKeyAsync(lib, k);
-  if (it && !it.deleted) { it.deleted = true; await it.saveTx(); trashed++; }
-}
+// One saveTx() per item opens one transaction per item, and a thousand of them
+// overruns the bridge timeout (measured: 983 snapshots died at ~924). Batch them.
+await Zotero.DB.executeTransaction(async function () {
+  for (var k of KEYS) {
+    var it = await Zotero.Items.getByLibraryAndKeyAsync(lib, k);
+    if (it && !it.deleted) { it.deleted = true; await it.save(); trashed++; }
+  }
+});
 var erased = 0;
 if (emptyTrash) {
   var all = await Zotero.Items.getAll(lib, false, true, false);
@@ -265,9 +287,14 @@ def cmd_gc(args):
     doomed, why = [], {}
     if args.orphans:
         for a in atts:
-            if not a["parentKey"] and not a["deleted"]:
+            if is_disposable_orphan(a):
                 doomed.append(a)
                 why[a["key"]] = "orphan"
+        filed = [a for a in atts
+                 if not a["parentKey"] and not a["deleted"] and not is_disposable_orphan(a)]
+        if filed and not args.json:
+            info("Keeping %d parentless attachment(s) that are filed, tagged or annotated "
+                 "— Zotero lists those as items." % len(filed))
     if args.snapshots:
         for a in atts:
             if a["contentType"] == "text/html" and not a["deleted"] and a["parentKey"]:

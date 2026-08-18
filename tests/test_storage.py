@@ -12,6 +12,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
 from zotero_agent.commands.features import tags_for_path  # noqa: E402
+from zotero_agent.commands.storage import is_disposable_orphan  # noqa: E402
 from zotero_agent.commands.write import merge_confidence  # noqa: E402
 from zotero_agent.pdf import shrink  # noqa: E402
 
@@ -139,6 +140,34 @@ class MergeConfidenceTests(unittest.TestCase):
             {"title": "Digitalization", "year": "2016", "firstAuthor": "Brennen", "edition": ""},
         ]
         self.assertTrue(merge_confidence(group)[0])
+
+
+class DisposableOrphanTests(unittest.TestCase):
+    """A parentless attachment is an item, not litter.
+
+    On a real library all 268 parentless attachments were filed in a collection
+    and were books — 1.1 GB the first version of this command offered to delete.
+    """
+
+    BASE = {"parentKey": None, "collections": 0, "tags": 0, "annotations": 0, "deleted": False}
+
+    def test_a_truly_unclaimed_file_is_disposable(self):
+        self.assertTrue(is_disposable_orphan(dict(self.BASE)))
+
+    def test_being_filed_in_a_collection_saves_it(self):
+        self.assertFalse(is_disposable_orphan(dict(self.BASE, collections=1)))
+
+    def test_being_tagged_saves_it(self):
+        self.assertFalse(is_disposable_orphan(dict(self.BASE, tags=2)))
+
+    def test_being_annotated_saves_it(self):
+        self.assertFalse(is_disposable_orphan(dict(self.BASE, annotations=5)))
+
+    def test_having_a_parent_means_it_is_not_an_orphan(self):
+        self.assertFalse(is_disposable_orphan(dict(self.BASE, parentKey="ABCD1234")))
+
+    def test_already_trashed_is_left_alone(self):
+        self.assertFalse(is_disposable_orphan(dict(self.BASE, deleted=True)))
 
 
 class TagsFromCollectionPathTests(unittest.TestCase):

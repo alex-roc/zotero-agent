@@ -1,6 +1,6 @@
 # Command reference
 
-_Auto-generated from the `zot` CLI (v0.8.0) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.8.1) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 
@@ -641,7 +641,7 @@ zot gc [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 
 | Argument | Description |
 |----------|-------------|
-| `--orphans` | attachments with no parent item |
+| `--orphans` | attachments nothing claims: no parent, no collection, no tags, no annotations (a filed parentless PDF is an item, and is kept) |
 | `--snapshots` | saved page snapshots (the item keeps its URL) |
 | `--empty-trash` | also erase everything already in the trash — PERMANENT |
 | `--dry-run` | report, don't write |

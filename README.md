@@ -123,7 +123,7 @@ non-interactively without `--yes`. Full reference: [`docs/commands.md`](docs/com
 |-------|----------|
 | **Read / analyze** | `search` `get` `cite` `pdf` `collections` `tags` `export` `missing` `author` `stats` `recent` `bib` `annotations` `related` `notes` `lint` |
 | **Edit / organize** | `add` `dedupe` `merge` `tag` (add/rm/rename/purge/normalize/from-collections) `set` `move` `collection` `note` `attach` `pdf-fetch` |
-| **Disk / cleanup** | `disk` `shrink` `gc` — `shrink` needs ghostscript + qpdf |
+| **Disk / cleanup** | `disk` `shrink` `gc` (snapshots + unclaimed files) — `shrink` needs ghostscript + qpdf |
 | **PDF outlines** | `toc` (show/scan/set/auto/clear) — needs the `[toc]` extra |
 | **Scanned PDFs** | `pdf-prep` (split double pages, OCR) — needs `[toc]` + OCRmyPDF |
 | **Batch (undoable)** | `apply` `undo` `enrich` |

@@ -273,11 +273,20 @@ short version:
   original, so a run over 35 real books shrank 13 and left 22 untouched. Nothing
   is lost by trying. Needs `ghostscript` and `qpdf`.
 
-- **`zot gc` removes what nothing points at**: orphan attachments (no parent item
-  — invisible in the UI) and page snapshots (the item keeps its URL). It never
-  bins an attachment carrying highlights, because annotations belong to the
-  attachment and do not survive it. Space comes back only once the trash is
-  emptied: `zot gc --empty-trash` is permanent, so `zot backup` first.
+- **`zot gc` removes what nothing points at**: page snapshots (the item keeps its
+  URL) and *unclaimed* attachments. Be precise about that second one — **a
+  parentless attachment is not junk.** Zotero lists it as an item like any other,
+  and dragging a PDF in without metadata is how half a library gets built: on a
+  real library all 268 parentless attachments were filed in collections and were
+  books, 1.1 GB of them. `--orphans` therefore only takes attachments that
+  *nothing* claims — no parent, no collection, no tags, no annotations — and
+  reports how many it kept. Attachments carrying highlights are never binned,
+  because annotations belong to the attachment and do not survive it.
+
+  Space comes back only once the trash is emptied: `zot gc --empty-trash` is
+  permanent, so `zot backup` first. Snapshots are the safe, high-yield target —
+  989 of them were 1 GB on that library — but check the parent still has its URL,
+  since a snapshot is your only copy if the page has rotted away.
 
 - **`zot tag from-collections --rules rules.json`** harvests the meaning already
   encoded in the folder tree, which is where a pre-tagging library keeps it. The

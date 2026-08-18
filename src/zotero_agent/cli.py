@@ -308,7 +308,9 @@ def build_parser():
     sp.add_argument("--dry-run", dest="dry_run", action="store_true", help="report the plan, touch nothing")
 
     sp = add("gc", storage.cmd_gc, "trash attachments nothing points at (orphans, snapshots)")
-    sp.add_argument("--orphans", action="store_true", help="attachments with no parent item")
+    sp.add_argument("--orphans", action="store_true",
+                    help="attachments nothing claims: no parent, no collection, no tags, "
+                         "no annotations (a filed parentless PDF is an item, and is kept)")
     sp.add_argument("--snapshots", action="store_true",
                     help="saved page snapshots (the item keeps its URL)")
     sp.add_argument("--empty-trash", dest="empty_trash", action="store_true",
