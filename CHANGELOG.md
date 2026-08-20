@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-08-19
+
+### Added
+- **`zot shrink` is now idempotent, and can sweep one band at a time.** Shrinking
+  is lossy — downsampling an already-downsampled page re-encodes it — so a second
+  sweep over the same range used to quietly degrade everything it had already
+  done. Rewritten files now carry a `shrunk` tag and later runs skip them,
+  reporting how many; `--force` redoes them anyway. `--max-mb` bounds the sweep,
+  which is what makes band-by-band work possible: the fat tail is the obvious
+  target, but the middle of the distribution holds more total bytes (on one
+  library, 13 files over 50 MB were 1.09 GiB against 2.70 GiB in the 201 files
+  of 10-20 MB).
+
+
 ## [0.8.2] - 2026-08-17
 
 ### Fixed
