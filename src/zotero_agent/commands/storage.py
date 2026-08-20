@@ -30,6 +30,12 @@ MB = 1024 * 1024
 # does this. Marked attachments are skipped unless --force says otherwise.
 SHRINK_TAG = "shrunk"
 
+# The other half of idempotence. A file that does not compress costs just as much
+# Ghostscript time to find out as one that does — measured, 126 of 194 files came
+# back no smaller, and re-running the sweep would spend those hours again to
+# reach the same verdict. So a refusal is recorded too.
+NOGAIN_TAG = "shrink-nogain"
+
 # One pass over every attachment. `getFilePathAsync` is what resolves linked
 # files and a configured base directory, so never rebuild storage/<KEY>/ by hand.
 _INVENTORY_JS = r"""
@@ -176,10 +182,15 @@ def _shrink_targets(cfg, args):
     swept = [a for a in pdfs if a["size"] >= args.min_mb * MB
              and (upper is None or a["size"] < upper)]
     if not getattr(args, "force", False):
-        done = [a for a in swept if SHRINK_TAG in (a.get("tagNames") or [])]
+        def seen(att):
+            names = att.get("tagNames") or []
+            return SHRINK_TAG in names or NOGAIN_TAG in names
+        done = [a for a in swept if seen(a)]
         if done:
-            info("Skipping %d file(s) already shrunk (--force to redo)." % len(done))
-        swept = [a for a in swept if SHRINK_TAG not in (a.get("tagNames") or [])]
+            shrunk = sum(1 for a in done if SHRINK_TAG in (a.get("tagNames") or []))
+            info("Skipping %d file(s) already examined — %d shrunk, %d with nothing to gain "
+                 "(--force to redo)." % (len(done), shrunk, len(done) - shrunk))
+        swept = [a for a in swept if not seen(a)]
     return sorted(swept, key=lambda a: -a["size"])
 
 
@@ -191,14 +202,14 @@ def _attachment_path(cfg, key):
     return res.get("path")
 
 
-def _mark_shrunk(cfg, key):
-    """Tag the attachment so a later sweep does not re-encode it."""
+def _mark(cfg, key, tag):
+    """Tag the attachment so a later sweep can skip it."""
     run_js(cfg, (
         "var it = await Zotero.Items.getByLibraryAndKeyAsync("
         "Zotero.Libraries.userLibraryID, %r);\n"
         "if (!it) return { ok: false };\n"
         "it.addTag(%s); await it.saveTx();\n"
-        "return { ok: true };" % (key, json.dumps(SHRINK_TAG))), label="shrink:tag")
+        "return { ok: true };" % (key, json.dumps(tag))), label="shrink:tag")
 
 
 def cmd_shrink(args):
@@ -256,10 +267,14 @@ def cmd_shrink(args):
                     # Same path, same page count: Zotero's annotations still anchor.
                     shutil.move(out, path)
                     row["status"] = "shrunk"
-                    _mark_shrunk(cfg, a["key"])
+                    _mark(cfg, a["key"], SHRINK_TAG)
                 saved += before - after
             elif accept:
                 saved += before - after
+            if not accept and not args.dry_run and reason == "no meaningful gain":
+                # Only this verdict is stable. A failed run or an unreadable page
+                # count might succeed next time, so those stay unmarked.
+                _mark(cfg, a["key"], NOGAIN_TAG)
             results.append(row)
             if os.path.exists(out):
                 os.remove(out)

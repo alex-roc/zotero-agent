@@ -225,6 +225,14 @@ class ShrinkTargetSelectionTests(unittest.TestCase):
              mock.patch.object(storage, "resolve_key", side_effect=lambda cfg, k: k):
             self.assertEqual(storage._shrink_targets(None, self.Args(min_mb=25)), [])
 
+    def test_a_file_with_nothing_to_gain_is_not_retried(self):
+        # 126 of 194 real files came back no smaller; finding that out costs the
+        # same Ghostscript time as a success, so the verdict is recorded.
+        atts = [dict(self.ATTS[0], tagNames=["shrink-nogain"])]
+        with mock.patch.object(storage, "_inventory", return_value=(atts, 0)), \
+             mock.patch.object(storage, "resolve_key", side_effect=lambda cfg, k: k):
+            self.assertEqual(storage._shrink_targets(None, self.Args(min_mb=25)), [])
+
     def test_force_redoes_an_already_shrunk_file(self):
         atts = [dict(self.ATTS[0], tagNames=["shrunk"])]
         args = self.Args(min_mb=25)

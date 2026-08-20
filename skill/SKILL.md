@@ -267,9 +267,14 @@ short version:
   zot shrink ABCD1234                   # one item, replaced in place
   ```
 
-  **Shrinking is lossy and therefore tagged.** Downsampling something already
-  downsampled re-encodes it again, so every file it rewrites gets a `shrunk` tag
-  and later sweeps skip it (`--force` overrides, and means it). Sweep one band at
+  **Both verdicts are recorded, so a sweep is cheap to repeat.** Shrinking is
+  lossy — downsampling something already downsampled re-encodes it — so rewritten
+  files get a `shrunk` tag. Files that came back no smaller get `shrink-nogain`,
+  because finding that out costs the same Ghostscript minutes as a success: on one
+  library 126 of 194 files did not compress, and an unmarked re-run would spend
+  those hours again to reach the same answer. Later sweeps skip both and say so
+  (`--force` overrides, and means it). A timeout or an unreadable file is *not*
+  recorded — those might work next time. Sweep one band at
   a time with `--min-mb`/`--max-mb`: the fat tail is where the obvious wins are,
   but the middle of the distribution holds more total bytes — on one library the
   13 files over 50 MB were 1.09 GiB while the 201 files of 10-20 MB were 2.70 GiB.
