@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-08-19
+
+### Added
+- **`zot shrink` records the refusals too.** 0.8.3 tagged what it rewrote, which
+  covered half the problem: a file that does not compress costs exactly as many
+  Ghostscript minutes to find out as one that does. On a real 194-file sweep, 126
+  came back no smaller — a second run would have spent those hours again to reach
+  the same verdict. Files with nothing to gain now get a `shrink-nogain` tag and
+  are skipped, so re-running a band is close to instant. A timeout or an
+  unreadable page count is deliberately *not* recorded, since those can succeed on
+  another try. `--force` re-examines everything.
+
+
 ## [0.8.3] - 2026-08-19
 
 ### Added
