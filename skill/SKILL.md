@@ -267,6 +267,13 @@ short version:
   zot shrink ABCD1234                   # one item, replaced in place
   ```
 
+  **Shrinking is lossy and therefore tagged.** Downsampling something already
+  downsampled re-encodes it again, so every file it rewrites gets a `shrunk` tag
+  and later sweeps skip it (`--force` overrides, and means it). Sweep one band at
+  a time with `--min-mb`/`--max-mb`: the fat tail is where the obvious wins are,
+  but the middle of the distribution holds more total bytes — on one library the
+  13 files over 50 MB were 1.09 GiB while the 201 files of 10-20 MB were 2.70 GiB.
+
   200 dpi is the default because it is the measured sweet spot for scanned books:
   about a fifth of the original, still legible down to pencil marginalia. The
   result is only kept when the page count survives and the file is ≤80% of the

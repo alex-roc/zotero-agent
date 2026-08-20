@@ -24,6 +24,12 @@ from ..term import confirm_write, die, info
 
 MB = 1024 * 1024
 
+# Shrinking is lossy: it downsamples the page images. Doing it twice re-encodes
+# what was already re-encoded, so a re-run over the same sweep would quietly
+# degrade every file it had already done. pdf-prep solves this with a tag; so
+# does this. Marked attachments are skipped unless --force says otherwise.
+SHRINK_TAG = "shrunk"
+
 # One pass over every attachment. `getFilePathAsync` is what resolves linked
 # files and a configured base directory, so never rebuild storage/<KEY>/ by hand.
 _INVENTORY_JS = r"""
@@ -54,6 +60,7 @@ for (var it of all) {
     annotations: countAnnotations(it),
     collections: it.getCollections ? it.getCollections().length : 0,
     tags: it.getTags ? it.getTags().length : 0,
+    tagNames: it.getTags ? it.getTags().map(function (t) { return t.tag; }) : [],
     deleted: !!it.deleted,
     hasFile: !!path
   });
@@ -165,8 +172,15 @@ def _shrink_targets(cfg, args):
         for key in sorted(missing):
             info("no local PDF for %s — skipped" % key)
         return sorted(chosen, key=lambda a: -a["size"])
-    return sorted([a for a in pdfs if a["size"] >= args.min_mb * MB],
-                  key=lambda a: -a["size"])
+    upper = args.max_mb * MB if getattr(args, "max_mb", None) else None
+    swept = [a for a in pdfs if a["size"] >= args.min_mb * MB
+             and (upper is None or a["size"] < upper)]
+    if not getattr(args, "force", False):
+        done = [a for a in swept if SHRINK_TAG in (a.get("tagNames") or [])]
+        if done:
+            info("Skipping %d file(s) already shrunk (--force to redo)." % len(done))
+        swept = [a for a in swept if SHRINK_TAG not in (a.get("tagNames") or [])]
+    return sorted(swept, key=lambda a: -a["size"])
 
 
 def _attachment_path(cfg, key):
@@ -175,6 +189,16 @@ def _attachment_path(cfg, key):
         "if (!it) return { error: 'not found' };\n"
         "return { path: await it.getFilePathAsync() };" % key), label="shrink:path") or {}
     return res.get("path")
+
+
+def _mark_shrunk(cfg, key):
+    """Tag the attachment so a later sweep does not re-encode it."""
+    run_js(cfg, (
+        "var it = await Zotero.Items.getByLibraryAndKeyAsync("
+        "Zotero.Libraries.userLibraryID, %r);\n"
+        "if (!it) return { ok: false };\n"
+        "it.addTag(%s); await it.saveTx();\n"
+        "return { ok: true };" % (key, json.dumps(SHRINK_TAG))), label="shrink:tag")
 
 
 def cmd_shrink(args):
@@ -232,6 +256,7 @@ def cmd_shrink(args):
                     # Same path, same page count: Zotero's annotations still anchor.
                     shutil.move(out, path)
                     row["status"] = "shrunk"
+                    _mark_shrunk(cfg, a["key"])
                 saved += before - after
             elif accept:
                 saved += before - after

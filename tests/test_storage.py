@@ -190,9 +190,11 @@ class ShrinkTargetSelectionTests(unittest.TestCase):
     ]
 
     class Args:
-        def __init__(self, keys=None, min_mb=25):
+        def __init__(self, keys=None, min_mb=25, max_mb=None):
             self.keys = keys or []
             self.min_mb = min_mb
+            self.max_mb = max_mb
+            self.force = False
 
     def _patched(self, args):
         with mock.patch.object(storage, "_inventory", return_value=(self.ATTS, 0)), \
@@ -210,6 +212,27 @@ class ShrinkTargetSelectionTests(unittest.TestCase):
     def test_the_sweep_honours_min_mb_and_skips_non_pdfs(self):
         got = self._patched(self.Args(min_mb=25))
         self.assertEqual([a["key"] for a in got], ["AAAA1111"])
+
+    def test_max_mb_bounds_the_band(self):
+        # 10-20 MB band: the 30 MB file is out, so nothing is left.
+        got = self._patched(self.Args(min_mb=10, max_mb=20))
+        self.assertEqual(got, [])
+
+    def test_an_already_shrunk_file_is_skipped(self):
+        # Shrinking is lossy; a second pass would re-encode what was encoded.
+        atts = [dict(self.ATTS[0], tagNames=["shrunk"])]
+        with mock.patch.object(storage, "_inventory", return_value=(atts, 0)), \
+             mock.patch.object(storage, "resolve_key", side_effect=lambda cfg, k: k):
+            self.assertEqual(storage._shrink_targets(None, self.Args(min_mb=25)), [])
+
+    def test_force_redoes_an_already_shrunk_file(self):
+        atts = [dict(self.ATTS[0], tagNames=["shrunk"])]
+        args = self.Args(min_mb=25)
+        args.force = True
+        with mock.patch.object(storage, "_inventory", return_value=(atts, 0)), \
+             mock.patch.object(storage, "resolve_key", side_effect=lambda cfg, k: k):
+            self.assertEqual([a["key"] for a in storage._shrink_targets(None, args)],
+                             ["AAAA1111"])
 
 
 class TagsFromCollectionPathTests(unittest.TestCase):

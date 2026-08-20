@@ -293,6 +293,11 @@ def build_parser():
                                             "omit to sweep everything over --min-mb")
     sp.add_argument("--min-mb", dest="min_mb", type=int, default=25,
                     help="with no keys, shrink every PDF at least this big (default 25)")
+    sp.add_argument("--max-mb", dest="max_mb", type=int,
+                    help="with no keys, stop at this size — lets you sweep one band at a time")
+    sp.add_argument("--force", action="store_true",
+                    help="re-shrink files already tagged '%s' (lossy: re-encodes them again)"
+                         % "shrunk")
     sp.add_argument("--dpi", type=int, default=shrink_defaults.DEFAULT_DPI,
                     help="target resolution for colour/grey images (default %d)"
                          % shrink_defaults.DEFAULT_DPI)

@@ -3,7 +3,7 @@ title: Command reference
 description: Every zot command and its arguments — auto-generated from the CLI.
 ---
 
-_Auto-generated from the `zot` CLI (v0.8.2) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
+_Auto-generated from the `zot` CLI (v0.8.3) — do not edit by hand; run `python scripts/gen_cli_reference.py`._
 
 Global flags on every command: `--json`, `-q/--quiet`, `--debug`, `--yes`, `--base/--token/--user-id` (or `ZOTERO_AGENT_*`). Exit codes: 0 ok, 1 error, 2 connection/exec, 3 not-found, 4 config.
 
@@ -617,9 +617,10 @@ zot disk [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 
 ```
 zot shrink [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
-                  [--debug] [-y] [--json] [--min-mb MIN_MB] [--dpi DPI]
-                  [--mono-dpi MONO_DPI] [--max-ratio MAX_RATIO] [--out DIR]
-                  [--timeout TIMEOUT] [--dry-run]
+                  [--debug] [-y] [--json] [--min-mb MIN_MB] [--max-mb MAX_MB]
+                  [--force] [--dpi DPI] [--mono-dpi MONO_DPI]
+                  [--max-ratio MAX_RATIO] [--out DIR] [--timeout TIMEOUT]
+                  [--dry-run]
                   [keys ...]
 ```
 
@@ -627,6 +628,8 @@ zot shrink [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 |----------|-------------|
 | `keys` | item or attachment keys/citekeys ('-' reads stdin); omit to sweep everything over --min-mb |
 | `--min-mb` | with no keys, shrink every PDF at least this big (default 25) |
+| `--max-mb` | with no keys, stop at this size — lets you sweep one band at a time |
+| `--force` | re-shrink files already tagged 'shrunk' (lossy: re-encodes them again) |
 | `--dpi` | target resolution for colour/grey images (default 200) |
 | `--mono-dpi` | target resolution for bitonal images (default 300) |
 | `--max-ratio` | keep the original unless the rewrite is at most this fraction of its size (default 0.80) |
