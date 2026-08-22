@@ -397,6 +397,14 @@ def cmd_enrich(args):
             how = "search"
             creators = it.get("creators") or []
             surname = creators[0].split()[-1] if creators and creators[0].split() else ""
+            # Sin año ni autor, un título genérico no puede identificar nada:
+            # Crossref devolvería una coincidencia perfecta con otra obra. Se
+            # corta antes de la llamada de red, que además así no se gasta.
+            corroborado = bool(it.get("date") or it.get("year")) or bool(surname)
+            if not corroborado and not match.title_is_distinctive(title):
+                rejected["vague-title"] = rejected.get("vague-title", 0) + 1
+                time.sleep(args.delay)
+                continue
             best_reason = "no-result"
             for cand in _search_candidates(title, args.source):
                 if not cand:
