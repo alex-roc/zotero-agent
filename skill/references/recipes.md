@@ -21,6 +21,7 @@ Run with `zot exec file.js`, `zot exec '<inline>'`, or `echo … | zot exec -`.
 - [Search conditions](#search-conditions)
 - [Utility scripts](#utility-scripts)
 - [Environment helpers](#environment-helpers)
+- [File sync / WebDAV storage](#file-sync--webdav-storage)
 
 ---
 
@@ -275,3 +276,112 @@ re-enable sync afterward. See the skill's SKILL.md for the full checklist.
 > from data you already hold (this is why `zot apply --dry-run` runs no JS).
 > `zot exec --dry-run` still executes with best-effort interception — `zot
 > backup` is the only hard guarantee.
+
+---
+
+## File sync / WebDAV storage
+
+Zotero syncs **metadata** through zotero.org and **attachment files** through a
+separate storage backend. When that backend is WebDAV, everything lives behind
+one controller:
+
+```js
+const ctl = Zotero.Sync.Runner.getStorageController('webdav');
+```
+
+Reading the current setup needs no controller — it is all prefs:
+
+```js
+return JSON.stringify({
+  protocol: Zotero.Prefs.get('sync.storage.protocol'),   // 'zotero' | 'webdav'
+  scheme:   Zotero.Prefs.get('sync.storage.scheme'),     // 'https'
+  url:      Zotero.Prefs.get('sync.storage.url'),        // host+path, NO scheme
+  username: Zotero.Prefs.get('sync.storage.username'),
+  verified: Zotero.Prefs.get('sync.storage.verified'),
+  downloadMode: Zotero.Prefs.get('sync.storage.downloadMode.personal'),
+});
+```
+
+**`sync.storage.url` holds host + path without the scheme** (`example.com/dav`),
+and Zotero appends its own `zotero/` subdirectory: the effective root is
+`<scheme>://<user>:<pass>@<url>/zotero/`. Point it at the parent, never at a
+directory you already called `zotero`.
+
+### Switching to another WebDAV server
+
+The order matters, and three of these steps are the ones people get wrong.
+
+```js
+const ctl = Zotero.Sync.Runner.getStorageController('webdav');
+
+Zotero.Prefs.set('sync.storage.protocol', 'webdav');
+Zotero.Prefs.set('sync.storage.scheme', 'https');
+Zotero.Prefs.set('sync.storage.url', 'webdav.example.org');
+Zotero.Prefs.set('sync.storage.username', 'alex');
+Zotero.Prefs.set('sync.storage.verified', false);
+
+ctl.clearCachedCredentials();
+await ctl.setPassword(PASSWORD);          // async — see below
+ctl._rootURI = false; ctl._parentURI = false;   // force a rebuild
+await ctl._init();
+
+try { await ctl.checkServer(); Zotero.Prefs.set('sync.storage.verified', true); }
+catch (e) {
+  if (e.error === 'ZOTERO_DIR_NOT_FOUND') {  // exactly where the UI asks "create it?"
+    await ctl._createServerDirectory();
+    await ctl.checkServer();
+    Zotero.Prefs.set('sync.storage.verified', true);
+  } else throw e;
+}
+```
+
+- **`getPassword()`/`setPassword()` are `async`.** Without `await`, `ctl.getPassword() === pw`
+  compares a Promise to a string and is **always false** — with no error to warn you. The
+  password itself lives in the login manager (origin `chrome://zotero`), not in `prefs.js`.
+- **`ctl.rootURI` throws `"rootURI not set"` until `_init()` has run**, and `_init()` needs the
+  username *and* password already stored — it builds the URI with the credentials inside. So a
+  bare read of `rootURI` right after changing prefs blows up; that error usually means "you
+  called it too early", not "the config is wrong".
+- **`checkServer()` is the *Verify Server* button.** It throws a `VerificationError` whose
+  `.error` is a code (`NO_URL`, `NO_USERNAME`, `NO_PASSWORD`, `INVALID_URL`,
+  `ZOTERO_DIR_NOT_FOUND`); read `e.error`, not the message.
+
+### The step everyone forgets: reset the file sync history
+
+Zotero tracks per-attachment sync state, so after pointing at a **new** server it still believes
+those files are uploaded — they are, but to the *old* one. The new server then stays nearly
+empty and **nothing reports an error**.
+
+```js
+const L = Zotero.Sync.Storage.Local;
+await L.resetAllSyncStates(Zotero.Libraries.userLibraryID);   // libraryID is required
+```
+
+This is *Settings → Sync → Reset → Reset File Sync History*. It only flips every imported
+attachment to `SYNC_STATE_TO_UPLOAD` (= 0); it touches no file on disk. Check the result:
+
+```js
+return await Zotero.DB.queryAsync(
+  "SELECT syncState, COUNT(*) n FROM itemAttachments JOIN items USING (itemID) "
+  + "WHERE libraryID=? GROUP BY syncState", [Zotero.Libraries.userLibraryID]);
+// 0 TO_UPLOAD · 1 TO_DOWNLOAD · 2 IN_SYNC · 3 FORCE_UPLOAD · 4 FORCE_DOWNLOAD · 5 IN_CONFLICT
+```
+
+**Migrating servers never deletes anything from the old one**, so the previous backend stays as
+a frozen snapshot you can fall back to — and going back is the same recipe with the old URL.
+Attachments added *after* the switch exist only on the new server.
+
+### Running the sync
+
+```js
+Zotero.Sync.Runner.sync({background: false});   // NO await — it can run for hours
+return "sync started";
+```
+
+`await`ing it would hold the bridge request open for the whole upload and time out. Watch
+progress on the server side (file count / bytes), not from `exec`. A full re-upload is
+resumable: files already up move to `IN_SYNC` and are skipped on the next run.
+
+**Two limits worth knowing before proposing WebDAV to anyone**: it stores files for the
+**personal library only** (group-library attachments require paid Zotero Storage), and it never
+replaces zotero.org for metadata.
