@@ -8,7 +8,9 @@ citation.
 
 So every lookup here is a *candidate* until three independent signals agree:
 the title matches closely, the year is compatible, and the author is the same
-person. The functions are pure and string-only — no network, no Zotero — so the
+person. And when there is no year and no author, the title itself has to be
+specific enough to identify anything: a one-word title matches something
+everywhere, perfectly, and no similarity threshold can tell that apart. The functions are pure and string-only — no network, no Zotero — so the
 thresholds can be tested directly, which is the whole reason they live in their
 own module.
 """
@@ -34,6 +36,29 @@ MIN_TITLE_SIMILARITY_UNCORROBORATED = 0.98
 # the record saying 2010 for a book Zotero has as 2011), so allow a ±1 slip.
 MAX_YEAR_DRIFT = 1
 
+# A title only identifies a work if it carries enough information to be unique.
+# Measured on a library whose items had been created from PDF filenames: titles
+# like "deposito", "vermis" and "Esbozo" all matched real Crossref records at
+# similarity 1.000 — a perfect match against a different work entirely. No
+# threshold on similarity can catch that, because the similarity is genuinely
+# perfect; what fails is the premise that the title is an identifier.
+#
+# So an uncorroborated title also has to clear a floor of its own. Four
+# significant words is the measured line: "Ética de la inteligencia artificial"
+# keeps four after stopwords and passes, while "El Giro Afectivo" keeps two and
+# is held back for a human to look at.
+MIN_DISTINCTIVE_WORDS = 4
+MIN_DISTINCTIVE_CHARS = 18
+
+# Words that carry no identifying weight, in the two languages this library
+# lives in. Kept deliberately short: this is not a stopword list for search,
+# only for judging whether a title says anything.
+_FILLER = frozenset("""
+a an the of and or in on to for with without from by at as is are be
+el la los las un una unos unas de del y o en con sin para por al sobre
+que su sus lo se es son ser mas mas
+""".split())
+
 
 def strip_accents(text):
     decomposed = unicodedata.normalize("NFD", text or "")
@@ -44,6 +69,48 @@ def norm_title(text):
     """Casefold, drop accents and punctuation, collapse whitespace."""
     flat = strip_accents(text).lower()
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", flat)).strip()
+
+
+
+def significant_words(text):
+    """Words of a title that actually carry identity: no fillers, no 1-2 letters."""
+    return [w for w in norm_title(text).split()
+            if len(w) > 2 and w not in _FILLER]
+
+
+def title_is_distinctive(text):
+    """Can this title identify a work on its own?
+
+    Used only when there is no year and no author to cross-check. A short or
+    generic title matches *something* in every bibliographic database, and the
+    match is perfect, so similarity cannot be the guard here.
+    """
+    words = significant_words(text)
+    if len(words) >= MIN_DISTINCTIVE_WORDS:
+        return True
+    # a couple of long words can still be specific ("Zettelkasten Methode")
+    return len("".join(words)) >= MIN_DISTINCTIVE_CHARS and len(words) >= 2
+
+
+
+def author_corroborates(item_title, item_surname):
+    """¿El autor es una señal *independiente* del título?
+
+    El módulo se apoya en que título, año y autor son tres pruebas distintas.
+    Deja de ser cierto cuando el título es el propio apellido — pasa con fichas
+    creadas desde nombres de archivo como "Marias (1980). Historia de la
+    filosofia", donde el parseo se quedó en "Marias". Contarlo como corroboración
+    es contar la misma evidencia dos veces, y en una prueba real hizo aceptar la
+    tesis doctoral de otra persona llamada igual.
+    """
+    surname = norm_title(item_surname)
+    if not surname:
+        return False
+    words = significant_words(item_title)
+    if len(words) > 2:
+        return True          # el título dice bastante más que el apellido
+    title = " ".join(words)
+    return not (title == surname or title in surname or surname in title)
 
 
 def title_similarity(a, b):
@@ -104,7 +171,17 @@ def verify(item_title, item_year, item_surname, candidate,
     a --dry-run can explain itself.
     """
     similarity = title_similarity(item_title, candidate.get("title"))
-    corroborated = bool(year_of(item_year)) or bool((item_surname or "").strip())
+
+    # Una señal solo corrobora si se ha podido COMPARAR de verdad. Tener año en
+    # el ítem no sirve de nada si el candidato no trae ninguno: ahí no hay
+    # comprobación, solo la ilusión de tenerla. Fue así como un ítem titulado
+    # "Marias" con año 1980 aceptó una tesis de Unicamp sin fecha declarada.
+    year_checked = (year_of(item_year) is not None
+                    and year_of(candidate.get("year")) is not None)
+    author_checked = (author_corroborates(item_title, item_surname)
+                      and bool(candidate.get("authors")))
+    corroborated = year_checked or author_checked
+
     floor = min_similarity if corroborated else max(min_similarity,
                                                     MIN_TITLE_SIMILARITY_UNCORROBORATED)
     if similarity < floor:
@@ -113,4 +190,8 @@ def verify(item_title, item_year, item_surname, candidate,
         return False, similarity, "year"
     if not surname_present(item_surname, candidate.get("authors")):
         return False, similarity, "author"
+    # Lo último: si el título no identifica nada por sí solo y ninguna otra
+    # señal llegó a comprobarse, la coincidencia perfecta no prueba nada.
+    if not corroborated and not title_is_distinctive(item_title):
+        return False, similarity, "vague-title"
     return True, similarity, ""
