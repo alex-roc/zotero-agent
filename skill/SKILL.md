@@ -139,6 +139,18 @@ candidate's authors. An item with **no year and no author** needs 0.98, because
 title similarity is then the only evidence: at 0.94 the check accepted "The OECD
 Going Digital Measurement Roadmap" as the *2026* edition of itself.
 
+**A fourth signal, added after a measured failure: the title has to be able to
+identify a work at all.** On items created from PDF filenames, titles like
+"deposito", "vermis" and "Esbozo" matched real Crossref records at similarity
+**1.000** — perfect matches against entirely different works. No similarity
+threshold can catch that, so `verify` now rejects a vague title (fewer than four
+significant words) with the reason `vague-title` unless another signal actually
+corroborated it. Two subtleties that cost a wrong DOI each: a surname does not
+corroborate a title that *is* that surname ("Marias" by Marías), and a year only
+corroborates when **both sides** have one — an item's 1980 proves nothing against
+a candidate that declares no date. `enrich` also skips the network call entirely
+for those, so a library full of filename-derived titles no longer burns requests.
+
 Expect a high rejection rate — 418 of 638 on a real run — and read the
 `Rejected N candidate(s): title 380, year 26, author 12` line as the feature
 working, not as a failure. Items that **already have a DOI** skip the guessing
