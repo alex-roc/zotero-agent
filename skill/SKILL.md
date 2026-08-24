@@ -381,7 +381,11 @@ non-interactively unless you pass `--yes` (and prompt on a TTY). Before a bulk
 or destructive run:
 
 1. **Back up** with `zot backup` (snapshots `zotero.sqlite`, prints the path).
-   Especially before `zot dedupe --merge`.
+   Especially before `zot dedupe --merge`. Each run also prunes the backup
+   directory to the newest snapshot of each of the last 3 days — a snapshot is a
+   full 300-400 MB copy, so unpruned they cost about a gigabyte a day. Pass
+   `--keep-days N` to widen that window before a risky batch, or `--keep-days 0`
+   to keep everything.
 2. **Disable auto-sync** in Zotero → Preferences → Sync (so a mistake doesn't propagate).
 3. **Dry-run / scope first**: for batch edits prefer **`zot apply edits.jsonl --dry-run`**,
    whose preview runs **no** JS and therefore cannot persist. `zot exec script.js

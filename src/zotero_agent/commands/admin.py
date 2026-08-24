@@ -3,6 +3,7 @@
 import datetime
 import json
 import os
+import re
 import secrets
 import shlex
 import shutil
@@ -151,6 +152,48 @@ def cmd_exec(args):
         die(env.get("error") or "unknown error from the bridge", code=EXIT_CONN)
 
 
+BACKUP_RE = re.compile(r"^zotero-(\d{8})-(\d{6})\.sqlite(-wal|-shm)?$")
+DEFAULT_KEEP_DAYS = 3
+
+
+def _prune_backups(dest_dir, keep_days):
+    """Keep the newest snapshot of each of the `keep_days` most recent days.
+
+    Snapshots pile up fast — a busy day leaves three 400 MB copies — and nothing
+    ever removed them, so the directory grew about a gigabyte a day. Pruning by
+    *day* rather than by count is what preserves real coverage: three copies made
+    this afternoon are one bad afternoon, not three restore points.
+
+    Returns (removed_names, freed_bytes).
+    """
+    if keep_days <= 0:
+        return [], 0
+    by_stamp = {}
+    for name in os.listdir(dest_dir):
+        m = BACKUP_RE.match(name)
+        if m:
+            by_stamp.setdefault((m.group(1), m.group(2)), []).append(name)
+    keep_dates = sorted({date for date, _ in by_stamp}, reverse=True)[:keep_days]
+    newest_of_day = {}
+    for date, tm in by_stamp:
+        if date in keep_dates and tm > newest_of_day.get(date, ""):
+            newest_of_day[date] = tm
+    removed, freed = [], 0
+    for (date, tm), names in sorted(by_stamp.items()):
+        if newest_of_day.get(date) == tm:
+            continue
+        for name in names:
+            path = os.path.join(dest_dir, name)
+            try:
+                size = os.path.getsize(path)
+                os.remove(path)
+            except OSError:
+                continue
+            removed.append(name)
+            freed += size
+    return removed, freed
+
+
 def cmd_backup(args):
     from ..config import require_config
     cfg = require_config(args)
@@ -173,6 +216,12 @@ def cmd_backup(args):
     print("Backed up to: %s (%.0f MB)" % (main_copy, size_mb))
     for extra in copied[1:]:
         print("  + %s" % os.path.basename(extra))
+    keep_days = getattr(args, "keep_days", DEFAULT_KEEP_DAYS)
+    removed, freed = _prune_backups(dest_dir, keep_days)
+    if removed:
+        print("Pruned %d older snapshot%s (%.0f MB freed; keeping %d day%s)"
+              % (len(removed), "" if len(removed) == 1 else "s",
+                 freed / (1024 * 1024), keep_days, "" if keep_days == 1 else "s"))
 
 
 def cmd_sync(args):

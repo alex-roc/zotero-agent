@@ -286,6 +286,9 @@ def build_parser():
 
     sp = add("backup", admin.cmd_backup, "snapshot zotero.sqlite to a timestamped file")
     sp.add_argument("--dir", help="destination dir (default: ~/.config/zotero-agent/backups)")
+    sp.add_argument("--keep-days", dest="keep_days", type=int, default=admin.DEFAULT_KEEP_DAYS,
+                    help="keep the newest snapshot of each of the N most recent days "
+                         "(default %d); 0 disables pruning" % admin.DEFAULT_KEEP_DAYS)
 
     sp = add("disk", storage.cmd_disk, "where the attachment store's gigabytes are")
     sp.add_argument("--min-mb", dest="min_mb", type=int, default=25,

@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **`zot backup` now prunes what it leaves behind (`--keep-days`).** Each snapshot
+  is a full copy of `zotero.sqlite` — 300-400 MB on a real library — and nothing
+  ever removed the old ones. A working day with three backups added a gigabyte,
+  and one library had accumulated 3.5 GB in ten snapshots before anyone noticed.
+
+  Pruning is by **day**, not by count: the newest snapshot of each of the last N
+  days survives (default 3). Keeping "the last three snapshots" would have kept
+  three copies made this afternoon and no restore point older than today, which
+  is the opposite of what a backup is for. `--keep-days 0` disables it. Only files
+  matching `zotero-YYYYMMDD-HHMMSS.sqlite` and their `-wal`/`-shm` companions are
+  touched; anything else in the directory is left where it is.
 - **`zot dedupe --by content`: the duplicates a title never finds.** The existing
   axes compare metadata, which misses the most common shape of the problem — two
   records holding the *same file* under titles that have nothing in common. On a

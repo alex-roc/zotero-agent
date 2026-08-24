@@ -448,12 +448,13 @@ zot skill [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 
 ```
 zot backup [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
-                  [--debug] [-y] [--json] [--dir DIR]
+                  [--debug] [-y] [--json] [--dir DIR] [--keep-days KEEP_DAYS]
 ```
 
 | Argument | Description |
 |----------|-------------|
 | `--dir` | destination dir (default: ~/.config/zotero-agent/backups) |
+| `--keep-days` | keep the newest snapshot of each of the N most recent days (default 3); 0 disables pruning |
 
 ### `zot sync`
 
