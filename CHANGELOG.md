@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-08-24
+
 ### Added
 - **`zot backup` now prunes what it leaves behind (`--keep-days`).** Each snapshot
   is a full copy of `zotero.sqlite` — 300-400 MB on a real library — and nothing
