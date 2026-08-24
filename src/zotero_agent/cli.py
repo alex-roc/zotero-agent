@@ -153,15 +153,20 @@ def build_parser():
                     help="refuse to add if a close title+author match is already in the library")
 
     sp = add("dedupe", write.cmd_dedupe, "find duplicate items; --plan writes a reviewable merge plan")
-    sp.add_argument("--by", choices=["title", "doi"], default="title")
+    sp.add_argument("--by", choices=["title", "doi", "content"], default="title",
+                    help="what makes two items the same: their title, their DOI, or "
+                         "the file they share ('content' finds the ones whose titles "
+                         "do not resemble each other)")
     sp.add_argument("--collection", help="limit to a collection (key or name); else whole library")
     sp.add_argument("--plan", metavar="FILE",
                     help="write the merge plan as JSONL for review, then run `zot merge --from FILE`")
     sp.add_argument("--merge", action="store_true",
-                    help="merge the confident groups now (oldest is master); merging is NOT undoable")
+                    help="merge the confident groups now (master is the oldest item, or "
+                         "the best-documented one with --by content); NOT undoable")
     sp.add_argument("--force", action="store_true",
                     help="with --merge, also merge groups whose author/year/edition disagree")
-    sp.add_argument("--fuzzy", action="store_true", help="also group near-identical titles (Levenshtein)")
+    sp.add_argument("--fuzzy", action="store_true",
+                    help="also group near-identical titles (Levenshtein); title axis only")
     sp.add_argument("--threshold", type=float, default=0.9, help="similarity threshold for --fuzzy (0-1)")
     sp.add_argument("--samples", type=int, default=10)
 

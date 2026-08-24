@@ -15,7 +15,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from zotero_agent.commands import storage  # noqa: E402
 from zotero_agent.commands.features import tags_for_path  # noqa: E402
 from zotero_agent.commands.storage import is_disposable_orphan  # noqa: E402
-from zotero_agent.commands.write import merge_confidence  # noqa: E402
+from zotero_agent.commands.write import (  # noqa: E402
+    _plan_entry,
+    looks_like_filename,
+    merge_confidence,
+    metadata_richness,
+)
 from zotero_agent.pdf import shrink  # noqa: E402
 
 MB = 1024 * 1024
@@ -286,3 +291,128 @@ class TagsFromCollectionPathTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LooksLikeFilenameTests(unittest.TestCase):
+    """Every case here is a real title from a library, not an invention."""
+
+    def test_a_shelf_code_is_not_a_title(self):
+        self.assertTrue(looks_like_filename("2-1-8160"))
+        self.assertTrue(looks_like_filename("2-1-8159"))
+
+    def test_a_download_prefix_is_not_a_title(self):
+        self.assertTrue(looks_like_filename("dl-libro-2 2-1-8160"))
+
+    def test_a_pirate_library_stamp_is_not_a_title(self):
+        self.assertTrue(looks_like_filename(
+            "Game Programming Patterns (Robert Nystrom) z-lib.sk)"))
+
+    def test_a_trailing_date_stamp_is_not_a_title(self):
+        self.assertTrue(looks_like_filename("How Machines Learn_08-30-16"))
+
+    def test_an_extension_is_not_a_title(self):
+        self.assertTrue(looks_like_filename("Six degrees.epub"))
+
+    def test_a_real_title_survives(self):
+        for good in ("Philosophy of Logics",
+                     "The age of surveillance capitalism",
+                     "¿Pitaq kaypi kamachiq? las estructuras de poder en Cochabamba",
+                     "Técnicas cualitativas de investigación social",
+                     "A protocol for packet network intercommunication"):
+            self.assertFalse(looks_like_filename(good), good)
+
+    def test_a_title_that_swallowed_the_publisher_is_left_alone(self):
+        # Reads as prose, so the pattern must not fire; richness decides instead.
+        self.assertFalse(looks_like_filename(
+            "Data Visualization in Society Amsterdam University Press 2020"))
+
+
+class MetadataRichnessTests(unittest.TestCase):
+    def test_the_stub_loses_to_the_catalogued_record(self):
+        stub = {"title": "2-1-8160", "year": "", "firstAuthor": "", "isbn": "", "doi": ""}
+        real = {"title": "Data Science from Scratch", "year": "2019",
+                "firstAuthor": "Grus", "isbn": "978-1-4920-4113-9", "doi": ""}
+        self.assertGreater(metadata_richness(real), metadata_richness(stub))
+
+    def test_an_identifier_outweighs_a_bare_author(self):
+        with_isbn = {"title": "Técnicas cualitativas de investigación social",
+                     "isbn": "978-84-7738-449-6", "firstAuthor": "Valles", "year": "1999"}
+        without = {"title": "Técnicas cualitativas de investigación social",
+                   "isbn": "", "firstAuthor": "Valles", "year": "1999"}
+        self.assertGreater(metadata_richness(with_isbn), metadata_richness(without))
+
+
+class ContentAxisConfidenceTests(unittest.TestCase):
+    """The shared file already proves it is one document, so the vetoes differ."""
+
+    def test_a_reprint_is_confident_despite_the_years(self):
+        # Taylor and Bogdan 1992 and 1996: same ISBN, same file, one is the reprint.
+        group = [
+            {"title": "Introducción a los métodos cualitativos de investigación",
+             "year": "1996", "firstAuthor": "Taylor", "edition": "", "type": "book"},
+            {"title": "Introducción a los métodos cualitativos de investigación",
+             "year": "1992", "firstAuthor": "Taylor",
+             "edition": "1ª reimpresión en España", "type": "book"},
+        ]
+        self.assertFalse(merge_confidence(group)[0])          # title axis: two editions
+        self.assertTrue(merge_confidence(group, by="content")[0])
+
+    def test_a_chapter_filed_with_its_book_still_needs_review(self):
+        # Dussel's chapter inside Lander's «La colonialidad del saber».
+        group = [
+            {"title": "Europa, Modernidad y Eurocentrismo", "year": "2013",
+             "firstAuthor": "Dussel", "edition": "", "type": "journalArticle"},
+            {"title": "La colonialidad del saber", "year": "2000",
+             "firstAuthor": "Lander", "edition": "", "type": "book"},
+        ]
+        confident, reason = merge_confidence(group, by="content")
+        self.assertFalse(confident)
+        self.assertEqual(reason, "different authors")
+
+    def test_one_cover_image_on_many_records_needs_review(self):
+        group = [
+            {"title": "Normativa en tecnologías de la información", "year": "2010",
+             "firstAuthor": "Medinaceli", "edition": "", "type": "journalArticle"},
+            {"title": "Organización, teletrabajo y redes", "year": "2010",
+             "firstAuthor": "Infantas", "edition": "", "type": "journalArticle"},
+        ]
+        self.assertFalse(merge_confidence(group, by="content")[0])
+
+    def test_a_stub_and_its_record_are_confident(self):
+        group = [
+            {"title": "Data Science from Scratch", "year": "2019",
+             "firstAuthor": "Grus", "edition": "", "type": "book"},
+            {"title": "Data Science from Scratch", "year": "",
+             "firstAuthor": "Grus", "edition": "", "type": "book"},
+        ]
+        self.assertTrue(merge_confidence(group, by="content")[0])
+
+
+class ContentAxisMasterTests(unittest.TestCase):
+    def test_the_best_documented_record_wins_not_the_oldest(self):
+        stub = {"key": "5FWVM6XR", "title": "Data Science from Scratch", "year": "",
+                "firstAuthor": "", "isbn": "", "doi": "",
+                "dateAdded": "2026-08-22 13:22:57"}
+        real = {"key": "5JZPKQ4W", "title": "Data Science from Scratch", "year": "2019",
+                "firstAuthor": "Grus", "isbn": "978-1-4920-4113-9", "doi": "",
+                "dateAdded": "2026-08-22 14:29:29"}
+        entry = _plan_entry([stub, real], True, "", by="content")
+        self.assertEqual(entry["master"], "5JZPKQ4W")
+        self.assertEqual(entry["others"], ["5FWVM6XR"])
+
+    def test_the_title_axis_still_prefers_the_oldest(self):
+        old = {"key": "AAAAAAAA", "title": "Network Science", "year": "",
+               "firstAuthor": "", "isbn": "", "doi": "", "dateAdded": "2015-01-01"}
+        new = {"key": "BBBBBBBB", "title": "Network Science", "year": "2016",
+               "firstAuthor": "Barabási", "isbn": "978-1", "doi": "",
+               "dateAdded": "2026-01-01"}
+        self.assertEqual(_plan_entry([old, new], True, "")["master"], "AAAAAAAA")
+
+    def test_a_shelf_code_never_becomes_the_master(self):
+        code = {"key": "QZ663ME6", "title": "2-1-8160", "year": "2025",
+                "firstAuthor": "", "isbn": "", "doi": "", "dateAdded": "2026-08-22 10:00"}
+        named = {"key": "UL6RHGFC", "title": "El derecho a la ciudad", "year": "2025",
+                 "firstAuthor": "Lefebvre", "isbn": "", "doi": "",
+                 "dateAdded": "2026-08-22 11:00"}
+        self.assertEqual(_plan_entry([code, named], True, "", by="content")["master"],
+                         "UL6RHGFC")

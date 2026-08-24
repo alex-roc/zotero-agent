@@ -187,12 +187,88 @@ FORMAL_TYPES = frozenset({
 })
 
 
-def merge_confidence(group):
+# Words that say nothing about which work a title names, so a title made only of
+# these plus punctuation is really a filename.
+_FILENAME_MARKERS = (
+    "z-lib", "zlib", "libgen", "b-ok", "annas-archive", "1lib", "pdfdrive",
+    "epdf", "dokumen.pub", "vdoc.pub", "scribd", "issuu",
+)
+
+
+def looks_like_filename(title):
+    """True when a title is really the name of the file it came from.
+
+    Records created from a filename keep whatever the file was called, and that
+    is what the file-identity axis keeps finding: `2-1-8160`, `dl-libro-2`,
+    `Game Programming Patterns (Robert Nystrom) z-lib.sk)`, `How Machines
+    Learn_08-30-16`. Such a record must never win the master slot.
+
+    Deliberately narrow — it only fires on marks a filename leaves behind. A
+    title that merely swallowed the publisher (`Data Visualization in Society
+    Amsterdam University Press 2020`) reads as prose and is not caught here; it
+    loses the master slot anyway, on the strength of the other record's ISBN,
+    author and year.
+    """
+    t = str(title or "").strip()
+    if not t:
+        return True
+    low = t.lower()
+    if any(m in low for m in _FILENAME_MARKERS):
+        return True
+    if re.search(r"\.(pdf|epub|djvu|mobi|azw3?|txt)\b", low):
+        return True
+    # A shelf code rather than a title: only digits, dashes and dots.
+    if re.fullmatch(r"[\d\s.\-_]+", t):
+        return True
+    # Download-scheme prefixes, and the underscore-plus-date stamp that
+    # export tools leave behind.
+    if re.match(r"^(dl|dl-libro|download|file|doc|scan|img)[\s_\-]", low):
+        return True
+    if re.search(r"_\d{1,2}-\d{1,2}-\d{2,4}$", low):
+        return True
+    return False
+
+
+def metadata_richness(item):
+    """Score how usable one record's metadata is. Higher wins the master slot.
+
+    Only used on the file-identity axis. There the records disagree about
+    everything — one is the real catalogue entry, the other is a stub titled
+    after the file — so `dateAdded` decides nothing: the stub is often the older
+    of the two. On the title and DOI axes the titles already agree and the
+    oldest-wins rule stays.
+    """
+    score = 0
+    if str(item.get("doi") or "").strip():
+        score += 4
+    if str(item.get("isbn") or "").strip():
+        score += 4
+    if str(item.get("firstAuthor") or "").strip():
+        score += 3
+    if item.get("year"):
+        score += 2
+    if item.get("abstract"):
+        score += 1
+    if item.get("notes"):
+        score += 1
+    if looks_like_filename(item.get("title")):
+        score -= 6
+    return score
+
+
+def merge_confidence(group, by="title"):
     """Return (confident, reason) for one duplicate group.
 
     Pure: `group` is a list of dicts with title/year/firstAuthor/edition, exactly
     what the dedupe scan returns. Absent values never veto — they are unknowns,
     not disagreements.
+
+    On the file-identity axis (`by="content"`) the year and the edition stop
+    vetoing: the shared file already proves it is one document, so a year that
+    disagrees is a cataloguing error, not a second work. Taylor and Bogdan 1992
+    and 1996 share an ISBN and a file — one is the reprint. The author and type
+    checks stay, because those are exactly what a chapter filed with its whole
+    book looks like, and that is the real false positive here.
     """
     authors = sorted({match.norm_title(i.get("firstAuthor") or "") for i in group} - {""})
     # Compare by containment, not equality: the same person shows up as
@@ -201,18 +277,43 @@ def merge_confidence(group):
         for b in authors[i + 1:]:
             if a not in b and b not in a:
                 return False, "different authors"
-    editions = {match.norm_title(str(i.get("edition") or "")) for i in group}
-    editions.discard("")
-    if len(editions) > 1:
-        return False, "different editions"
-    years = sorted(y for y in (match.year_of(i.get("year")) for i in group) if y)
-    if years and years[-1] - years[0] > match.MAX_YEAR_DRIFT:
-        return False, "years %d-%d" % (years[0], years[-1])
+    if by != "content":
+        editions = {match.norm_title(str(i.get("edition") or "")) for i in group}
+        editions.discard("")
+        if len(editions) > 1:
+            return False, "different editions"
+        years = sorted(y for y in (match.year_of(i.get("year")) for i in group) if y)
+        if years and years[-1] - years[0] > match.MAX_YEAR_DRIFT:
+            return False, "years %d-%d" % (years[0], years[-1])
     formal = {i.get("type") for i in group if i.get("type") in FORMAL_TYPES}
     if len(formal) > 1:
         return False, "different item types (%s)" % ", ".join(sorted(formal))
     return True, ""
 
+
+# `detail` describes one item for the plan the human reviews. ISBN is in here
+# because it settles cases the title cannot: two records with the same ISBN are
+# one work even when the years disagree (a reprint), and two editions of the
+# same book each carry their own.
+_DETAIL_JS = (
+    "function detail(it){ var cr = it.getCreators();\n"
+    "  var atts = [], notes = 0;\n"
+    "  try {\n"
+    "    atts = it.getAttachments().map(function(id){ return Zotero.Items.get(id); })\n"
+    "      .filter(function(a){ return a && a.attachmentContentType === 'application/pdf'; });\n"
+    "    notes = it.getNotes().length;\n"
+    "  } catch (e) { /* child rows not loaded: counts stay 0 */ }\n"
+    "  return { key: it.key, type: it.itemType, title: it.getField('title'),\n"
+    "    year: (String(it.getField('date')||'').match(/\\d{4}/)||[null])[0],\n"
+    "    firstAuthor: cr.length ? (cr[0].lastName || cr[0].name || '') : '',\n"
+    "    creators: cr.map(function(c){ return c.lastName || c.name || ''; }).join('; '),\n"
+    "    edition: it.getField('edition') || '',\n"
+    "    publisher: it.getField('publisher') || it.getField('publicationTitle') || '',\n"
+    "    doi: it.getField('DOI') || '',\n"
+    "    isbn: (function(){ try { return it.getField('ISBN') || ''; } catch (e) { return ''; } })(),\n"
+    "    pdfs: atts.length, notes: notes,\n"
+    "    abstract: (it.getField('abstractNote')||'').length, dateAdded: String(it.dateAdded) }; }\n"
+)
 
 _DEDUPE_SCAN = (
     "function norm(t){ return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }\n"
@@ -221,18 +322,8 @@ _DEDUPE_SCAN = (
     "  for(var i=1;i<=la;i++){ for(var j=1;j<=lb;j++){ var c=a[i-1]===b[j-1]?0:1;\n"
     "    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c); } }\n"
     "  return 1 - d[la][lb]/Math.max(la,lb); }\n"
-    "function detail(it){ var cr = it.getCreators();\n"
-    "  var atts = it.getAttachments().map(function(id){ return Zotero.Items.get(id); })\n"
-    "    .filter(function(a){ return a && a.attachmentContentType === 'application/pdf'; });\n"
-    "  return { key: it.key, type: it.itemType, title: it.getField('title'),\n"
-    "    year: (String(it.getField('date')||'').match(/\\d{4}/)||[null])[0],\n"
-    "    firstAuthor: cr.length ? (cr[0].lastName || cr[0].name || '') : '',\n"
-    "    creators: cr.map(function(c){ return c.lastName || c.name || ''; }).join('; '),\n"
-    "    edition: it.getField('edition') || '',\n"
-    "    publisher: it.getField('publisher') || it.getField('publicationTitle') || '',\n"
-    "    doi: it.getField('DOI') || '', pdfs: atts.length, notes: it.getNotes().length,\n"
-    "    abstract: (it.getField('abstractNote')||'').length, dateAdded: String(it.dateAdded) }; }\n"
-    "var groups = {};\n"
+    + _DETAIL_JS
+    + "var groups = {};\n"
     "for (var it of items) {\n"
     "  var kv = (by === 'doi') ? (it.getField('DOI')||'').toLowerCase().trim() : norm(it.getField('title'));\n"
     "  if (!kv) continue; (groups[kv] = groups[kv] || []).push(it);\n"
@@ -250,6 +341,89 @@ _DEDUPE_SCAN = (
     "var report = dup.map(function(g){ return g.map(detail); });\n"
     "return { by: by, fuzzy: fuzzy, groups: report.length, duplicates: report };"
 )
+
+# Two items holding the SAME FILE are the same work, and this is the only axis
+# that finds them: their titles need not resemble each other at all. In one real
+# library all 19 hits had one record titled after the *filename* — `2-1-8160`,
+# `Game Programming Patterns (Robert Nystrom) z-lib.sk)` — which is what fichas
+# created from a filename look like, and what no title comparison can catch.
+#
+# Hashing the whole library inside one bridge call would time out (16 GB in that
+# library), so size comes first: it is free, it rules out almost everything, and
+# md5 only runs where two files already agree on their exact byte count. The
+# stored sync hash is reused when Zotero has one, which after a sync is usual.
+_CONTENT_SCAN = r"""
+// getAttachments() throws UnloadedDataException unless the child rows are in
+// memory; the search only loads the items themselves. One bulk load beats
+// touching them one at a time.
+await Zotero.Items.loadDataTypes(items);
+
+function fileOf(att) {
+  try { return att.getFilePath(); } catch (e) { return null; }
+}
+var bySize = {}, considered = 0, unreadable = 0;
+for (var it of items) {
+  for (var aid of it.getAttachments()) {
+    var att = Zotero.Items.get(aid);
+    if (!att || !att.isStoredFileAttachment()) continue;
+    var path = fileOf(att);
+    if (!path) { unreadable++; continue; }
+    var size = null;
+    try { size = (await IOUtils.stat(path)).size; } catch (e) { unreadable++; continue; }
+    if (!size) continue;
+    considered++;
+    (bySize[size] = bySize[size] || []).push({ item: it, att: att, path: path, size: size });
+  }
+}
+
+// md5 only where the byte count already matches, and only across DIFFERENT
+// items: two copies hanging off one item are a separate problem (`zot gc`).
+var byHash = {}, hashed = 0;
+for (var size in bySize) {
+  var band = bySize[size];
+  if (band.length < 2) continue;
+  var owners = {};
+  for (var e of band) owners[e.item.key] = 1;
+  if (Object.keys(owners).length < 2) continue;
+  for (var e of band) {
+    var h = null;
+    try { h = e.att.attachmentSyncedHash || e.att.attachmentHash; hashed++; }
+    catch (err) { unreadable++; continue; }
+    if (!h) continue;
+    var kv = size + ':' + h;
+    (byHash[kv] = byHash[kv] || []).push(e);
+  }
+}
+
+// One group per distinct SET of items, so two items sharing three files are
+// reported once, not three times.
+var seen = {}, dup = [];
+for (var kv in byHash) {
+  var entries = byHash[kv];
+  var uniq = {}, order = [];
+  for (var e of entries) {
+    if (uniq[e.item.key]) continue;
+    uniq[e.item.key] = e; order.push(e);
+  }
+  if (order.length < 2) continue;
+  var sig = order.map(function (e) { return e.item.key; }).sort().join('+');
+  if (seen[sig]) continue;
+  seen[sig] = 1;
+  dup.push(order);
+}
+
+var report = dup.map(function (g) {
+  return g.map(function (e) {
+    var d = detail(e.item);
+    d.sharedFile = e.path.replace(/^.*[\\/]/, '');
+    d.sharedBytes = e.size;
+    return d;
+  });
+});
+return { by: 'content', fuzzy: false, groups: report.length, duplicates: report,
+         filesConsidered: considered, filesHashed: hashed, filesUnreadable: unreadable };
+"""
+
 
 # Merging across item types is fine, but Zotero wants the secondaries to agree
 # with the master first — otherwise webpage/blogPost pairs (a third of the real
@@ -286,9 +460,18 @@ return { merged: log.filter(function(r){ return r.ok; }).length,
 """
 
 
-def _plan_entry(group, confident, reason):
-    """One merge proposal: oldest item is master, the rest get absorbed."""
-    ordered = sorted(group, key=lambda i: i.get("dateAdded") or "")
+def _plan_entry(group, confident, reason, by="title"):
+    """One merge proposal: the master keeps its fields, the rest get absorbed.
+
+    Oldest wins by default. On the file-identity axis the richest record wins
+    instead — see `metadata_richness`. Picking a master that lacks the PDF is
+    safe: Zotero keeps the attachments of everything it absorbs.
+    """
+    if by == "content":
+        ordered = sorted(group, key=lambda i: (-metadata_richness(i),
+                                               i.get("dateAdded") or ""))
+    else:
+        ordered = sorted(group, key=lambda i: i.get("dateAdded") or "")
     master, others = ordered[0], ordered[1:]
     return {
         "master": master["key"],
@@ -304,15 +487,20 @@ def cmd_dedupe(args):
     from ..config import require_config
     cfg = require_config(args)
     fuzzy = getattr(args, "fuzzy", False)
-    code = ("var by = %r, fuzzy = %s, threshold = %s;\n" % (
-        args.by, "true" if fuzzy else "false", repr(getattr(args, "threshold", 0.9)))
-    ) + scope_js(args.collection) + _DEDUPE_SCAN
+    if args.by == "content":
+        if fuzzy:
+            info("--fuzzy does not apply to --by content: file identity is exact.")
+        code = scope_js(args.collection) + _DETAIL_JS + _CONTENT_SCAN
+    else:
+        code = ("var by = %r, fuzzy = %s, threshold = %s;\n" % (
+            args.by, "true" if fuzzy else "false", repr(getattr(args, "threshold", 0.9)))
+        ) + scope_js(args.collection) + _DEDUPE_SCAN
     res = run_js(cfg, code, label="dedupe")
 
     plan = []
     for group in res["duplicates"]:
-        confident, reason = merge_confidence(group)
-        plan.append(_plan_entry(group, confident, reason))
+        confident, reason = merge_confidence(group, by=args.by)
+        plan.append(_plan_entry(group, confident, reason, by=args.by))
     sure = [p for p in plan if p["confident"]]
     unsure = [p for p in plan if not p["confident"]]
     res["confident"] = len(sure)
@@ -334,9 +522,23 @@ def cmd_dedupe(args):
     print("Found %d duplicate group(s) by %s%s — %d confident, %d need review."
           % (res["groups"], res["by"], " (fuzzy)" if res.get("fuzzy") else "",
              len(sure), len(unsure)))
+    if args.by == "content":
+        info("Hashed %d of %d file(s) — only where the byte count already matched."
+             % (res.get("filesHashed", 0), res.get("filesConsidered", 0)))
+        if res.get("filesUnreadable"):
+            info("%d file(s) could not be read (not downloaded yet, or missing) "
+                 "and were skipped." % res["filesUnreadable"])
+        if res["groups"]:
+            info("A shared file is not always a duplicate: a chapter filed with "
+                 "its whole book, a journal issue holding several articles, or one "
+                 "cover image on many records all look like this. Review the plan.")
     for entry in plan[: args.samples]:
         flag = "" if entry["confident"] else "  ⚠ %s" % entry["reason"]
         print("  --%s" % flag)
+        if entry["items"] and entry["items"][0].get("sharedFile"):
+            first = entry["items"][0]
+            print("    file: %s  (%.1f MB)"
+                  % (first["sharedFile"][:60], (first.get("sharedBytes") or 0) / 1e6))
         for it in entry["items"]:
             print("    %-10s [%s] %-28s %s" % (
                 it["key"], it.get("year") or "????",
