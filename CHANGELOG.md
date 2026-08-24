@@ -33,6 +33,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   first: md5 runs only where two files already agree on their exact byte count —
   24 hashes across 2,340 files on a 16 GB library.
 
+- **`dedupe` now knows the four shapes that are *not* duplicates.** Grouping by
+  near-identical title was wrong far more often than right: of 40 candidates at
+  0.90 fuzzy similarity on a real library, **none** was a duplicate, yet 7 were
+  being called confident. The hard case is not the near-miss, it is the
+  deliberate parallel — same author, same year, same publisher, one word apart.
+
+  Four signals, each learned from a pair that would otherwise have been merged:
+
+  - **Different DOIs or ISBNs mean two works**, whatever else agrees. Hull's "The
+    Effect of Essentialism on Taxonomy" parts (I) and (II) share author, year and
+    nearly the whole title, and are told apart only by their DOIs.
+  - **A shared ISBN or DOI outranks a disagreeing year or edition.** Taylor and
+    Bogdan 1992 and 1996 carry one ISBN because the second is the reprint. An
+    ISBN-10 and its ISBN-13 are recognised as one book.
+  - **Titles that differ only by a numeral are a series.** This is the one that
+    matters most: the fuzzy axis was proposing to merge the six volumes of
+    Gramsci's *Cuadernos de la cárcel* into a single item.
+  - **Titles that differ by a real word are two works.** A guide "para el
+    profesorado" and one "para el estudiantado"; Wikipedia's "Hacktivism" and its
+    Spanish "Hacktivismo"; *Hipertexto para ciencias sociales* and *para
+    cientistas sociales*.
+
+  The title signals only fire where they are needed: on `--by title` the titles
+  are identical by construction, on `--by doi` a shared DOI has already settled
+  it, and on `--by content` they stand down because there the titles are
+  *expected* to disagree. The cost is real but small and one-directional: a true
+  duplicate whose titles differ by a word now lands in review instead of
+  confident. Fusing the wrong two items cannot be undone; a second look can.
+
+  On that library the fuzzy axis went from 7 confident to 0 — the right answer,
+  since none of them was a duplicate.
+
 ### Fixed
 - **`detail()` no longer throws on an item whose child rows are not loaded.** The
   PDF and note counts in a merge plan now degrade to 0 instead of failing the

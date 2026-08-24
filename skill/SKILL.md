@@ -166,11 +166,34 @@ zot enrich --field doi --min-similarity 0.95   # stricter still
 undone, and grouping by title alone is wrong more often than right — on a real
 library 20 of 46 groups were distinct works (five different *Estadística*
 textbooks by Spiegel and Triola; the 3rd and 4th editions of Scott). So `dedupe`
-now scores each group and only calls it *confident* when nothing contradicts it:
-same author (compared by containment, so "Banda" matches "Banda, Juan M."), same
-edition, years within ±1, and no two different *formal* item types — a thesis and
-the journal article drawn from it stay separate, while webpage/blogPost pairs are
-treated as one thing imported twice.
+scores each group and only calls it *confident* when nothing contradicts it.
+
+An **identifier decides first, in both directions**: two records carrying the
+same ISBN or DOI are one work even if their years fight (Taylor and Bogdan 1992
+and 1996 share an ISBN because one is the reprint; an ISBN-10 and its ISBN-13
+count as one number), and two carrying *different* ones are two works even when
+everything else matches — Hull's "The Effect of Essentialism on Taxonomy" parts
+(I) and (II) agree on author, year and nearly the whole title.
+
+Then what no identifier can override: same author (compared by containment, so
+"Banda" matches "Banda, Juan M.") and no two different *formal* item types — a
+thesis and the journal article drawn from it stay separate, while webpage/blogPost
+pairs are treated as one thing imported twice.
+
+Then the title, which is the weakest signal of all. **The hard case is the
+deliberate parallel**: same author, same year, same publisher, one word apart. A
+title differing only by a **numeral** is a series — the fuzzy axis was otherwise
+proposing to merge the six volumes of Gramsci's *Cuadernos de la cárcel* into one
+item. A title differing by a **real word** is another work: "para el profesorado"
+against "para el estudiantado", "Hacktivism" against "Hacktivismo". These two
+only fire where they can help — on `--by title` the titles are identical by
+construction, and on `--by content` they stand down, since there the titles are
+expected to disagree. Last come edition and year, unless an identifier already
+spoke.
+
+The cost is one-directional and deliberate: a real duplicate whose titles differ
+by a word lands in review instead of confident. Merging cannot be undone; a
+second look can.
 
 ```bash
 zot dedupe                          # groups, flagged ⚠ with the reason
