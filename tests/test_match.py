@@ -225,5 +225,62 @@ class AuthorMustBeIndependentEvidence(unittest.TestCase):
         self.assertTrue(ok, "reason: %s" % reason)
 
 
+class IsbnNotation(unittest.TestCase):
+    def test_an_isbn_10_and_its_isbn_13_are_one_book(self):
+        self.assertEqual(
+            match.identifiers_verdict(["0-9660176-4-9", "978-0-9660176-4-9"]), "same")
+
+    def test_two_isbns_from_one_publisher_are_still_two_books(self):
+        # Splitting on hyphens as well would compare "978", "84", "7476" and
+        # call every book from the same imprint a match.
+        self.assertEqual(
+            match.identifiers_verdict(["978-84-7476-385-0", "978-84-7476-224-2"]),
+            "different")
+
+    def test_a_field_holding_two_isbns_matches_on_either(self):
+        self.assertEqual(
+            match.identifiers_verdict(
+                ["978-3-031-58240-0 978-3-031-58241-7", "978-3-031-58240-0"]),
+            "same")
+
+    def test_a_lone_identifier_decides_nothing(self):
+        self.assertEqual(match.identifiers_verdict(["978-84-7509-816-6", ""]), "unknown")
+
+    def test_a_placeholder_is_not_an_identifier(self):
+        self.assertEqual(match.identifiers_verdict(["-", "-"], kind="doi"), "unknown")
+        self.assertEqual(match.identifiers_verdict(["n/a", "N/A"], kind="doi"), "unknown")
+
+
+class SeriesAndParallelTitles(unittest.TestCase):
+    def test_a_numeral_in_the_middle_is_found(self):
+        self.assertEqual(
+            match.series_numeral(["Internet y redes sociales en Bolivia 2 by AGETIC",
+                                  "Internet y redes sociales en Bolivia by AGETIC"]),
+            "2")
+
+    def test_roman_parts_are_found(self):
+        self.assertIsNotNone(
+            match.series_numeral(["The Effect of Essentialism on Taxonomy (I)",
+                                  "The Effect of Essentialism on Taxonomy (II)"]))
+
+    def test_a_real_word_is_not_a_numeral(self):
+        self.assertIsNone(
+            match.series_numeral(["Guia para el profesorado", "Guia para el estudiantado"]))
+
+    def test_one_word_apart_is_two_works(self):
+        self.assertIsNotNone(
+            match.contrasting_words(["Guia para el profesorado",
+                                     "Guia para el estudiantado"]))
+
+    def test_a_translation_is_two_entries(self):
+        self.assertIsNotNone(match.contrasting_words(["Hacktivism", "Hacktivismo"]))
+
+    def test_case_and_accents_alone_are_not_a_difference(self):
+        self.assertIsNone(match.contrasting_words(["Network Science", "network sciencé"]))
+
+    def test_a_numeral_is_not_reported_as_a_word(self):
+        self.assertIsNone(match.contrasting_words(["Bolivia 2", "Bolivia"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -259,17 +259,29 @@ def metadata_richness(item):
 def merge_confidence(group, by="title"):
     """Return (confident, reason) for one duplicate group.
 
-    Pure: `group` is a list of dicts with title/year/firstAuthor/edition, exactly
-    what the dedupe scan returns. Absent values never veto — they are unknowns,
-    not disagreements.
+    Pure: `group` is a list of dicts with title/year/firstAuthor/edition/doi/isbn,
+    exactly what the dedupe scan returns. Absent values never veto — they are
+    unknowns, not disagreements.
 
-    On the file-identity axis (`by="content"`) the year and the edition stop
-    vetoing: the shared file already proves it is one document, so a year that
-    disagrees is a cataloguing error, not a second work. Taylor and Bogdan 1992
-    and 1996 share an ISBN and a file — one is the reprint. The author and type
-    checks stay, because those are exactly what a chapter filed with its whole
-    book looks like, and that is the real false positive here.
+    The order matters. An identifier settles it in both directions and goes
+    first: two records sharing an ISBN are one work even if their years fight,
+    two carrying different ones are two works even if everything else matches.
+    Then the checks that no identifier can override (author, item type), then
+    the title and date signals that only apply when nothing stronger has spoken.
+
+    On the file-identity axis (`by="content"`) the year, the edition and the
+    title signals all stand down: the shared file already proves it is one
+    document, and there the two titles are *expected* to differ — one of them is
+    usually the filename. The author and type checks stay, because those are
+    what a chapter filed with its whole book looks like.
     """
+    isbn = match.identifiers_verdict([i.get("isbn") for i in group], kind="isbn")
+    doi = match.identifiers_verdict([i.get("doi") for i in group], kind="doi")
+    if doi == "different":
+        return False, "different DOIs"
+    if isbn == "different":
+        return False, "different ISBNs"
+
     authors = sorted({match.norm_title(i.get("firstAuthor") or "") for i in group} - {""})
     # Compare by containment, not equality: the same person shows up as
     # "Banda" and "Banda, Juan M." depending on how the record was imported.
@@ -277,17 +289,33 @@ def merge_confidence(group, by="title"):
         for b in authors[i + 1:]:
             if a not in b and b not in a:
                 return False, "different authors"
-    if by != "content":
-        editions = {match.norm_title(str(i.get("edition") or "")) for i in group}
-        editions.discard("")
-        if len(editions) > 1:
-            return False, "different editions"
-        years = sorted(y for y in (match.year_of(i.get("year")) for i in group) if y)
-        if years and years[-1] - years[0] > match.MAX_YEAR_DRIFT:
-            return False, "years %d-%d" % (years[0], years[-1])
     formal = {i.get("type") for i in group if i.get("type") in FORMAL_TYPES}
     if len(formal) > 1:
         return False, "different item types (%s)" % ", ".join(sorted(formal))
+
+    # A shared identifier outranks what follows: it is the same work, and a year
+    # or an edition that disagrees is a cataloguing difference (a reprint), not
+    # a second book.
+    if isbn == "same" or doi == "same":
+        return True, ""
+    if by == "content":
+        return True, ""
+
+    titles = [i.get("title") or "" for i in group]
+    numeral = match.series_numeral(titles)
+    if numeral:
+        return False, "series numerals differ (%s)" % numeral
+    words = match.contrasting_words(titles)
+    if words:
+        return False, "titles differ in %s" % words
+
+    editions = {match.norm_title(str(i.get("edition") or "")) for i in group}
+    editions.discard("")
+    if len(editions) > 1:
+        return False, "different editions"
+    years = sorted(y for y in (match.year_of(i.get("year")) for i in group) if y)
+    if years and years[-1] - years[0] > match.MAX_YEAR_DRIFT:
+        return False, "years %d-%d" % (years[0], years[-1])
     return True, ""
 
 

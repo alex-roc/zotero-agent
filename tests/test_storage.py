@@ -416,3 +416,126 @@ class ContentAxisMasterTests(unittest.TestCase):
                  "dateAdded": "2026-08-22 11:00"}
         self.assertEqual(_plan_entry([code, named], True, "", by="content")["master"],
                          "UL6RHGFC")
+
+
+class IdentifierVerdictTests(unittest.TestCase):
+    """An identifier settles it in both directions, and outranks the rest."""
+
+    def test_different_dois_are_two_works(self):
+        # Hull, "The Effect of Essentialism on Taxonomy", parts (I) and (II):
+        # same author, same year, near-identical title, different DOIs.
+        group = [
+            {"title": "THE EFFECT OF ESSENTIALISM ON TAXONOMY (I)", "year": "1965",
+             "firstAuthor": "Hull", "edition": "", "doi": "10.1093/bjps/XV.60.314"},
+            {"title": "THE EFFECT OF ESSENTIALISM ON TAXONOMY (II)", "year": "1965",
+             "firstAuthor": "Hull", "edition": "", "doi": "10.1093/bjps/XVI.61.1"},
+        ]
+        confident, reason = merge_confidence(group)
+        self.assertFalse(confident)
+        self.assertEqual(reason, "different DOIs")
+
+    def test_different_isbns_are_two_editions(self):
+        # Rodríguez, "Análisis estructural y de redes", 1995 and 2005.
+        group = [
+            {"title": "Análisis estructural y de redes", "year": "2005",
+             "firstAuthor": "Rodríguez", "edition": "", "isbn": "978-84-7476-385-0"},
+            {"title": "Análisis estructural y de redes", "year": "1995",
+             "firstAuthor": "Rodríguez", "edition": "", "isbn": "978-84-7476-224-2"},
+        ]
+        confident, reason = merge_confidence(group)
+        self.assertFalse(confident)
+        self.assertEqual(reason, "different ISBNs")
+
+    def test_a_shared_isbn_outranks_the_years(self):
+        # Taylor and Bogdan: the 1992 record is the reprint of the 1996 one.
+        group = [
+            {"title": "Introducción a los métodos cualitativos", "year": "1996",
+             "firstAuthor": "Taylor", "edition": "", "isbn": "978-84-7509-816-6"},
+            {"title": "Introducción a los métodos cualitativos", "year": "1992",
+             "firstAuthor": "Taylor", "edition": "1ª reimpresión en España",
+             "isbn": "978-84-7509-816-6"},
+        ]
+        confident, reason = merge_confidence(group)
+        self.assertTrue(confident, reason)
+
+    def test_a_shared_doi_outranks_the_years(self):
+        group = [
+            {"title": "An information flow model for conflict and fission",
+             "year": "1977", "firstAuthor": "Zachary", "edition": "",
+             "doi": "10.1086/jar.33.4.3629752"},
+            {"title": "An Information Flow Model for Conflict and Fission",
+             "year": "1970", "firstAuthor": "Zachary", "edition": "",
+             "doi": "10.1086/jar.33.4.3629752"},
+        ]
+        self.assertTrue(merge_confidence(group)[0])
+
+    def test_a_placeholder_doi_is_not_an_identifier(self):
+        # revistas.ucm.es leaves a bare hyphen in the DOI field; two unrelated
+        # articles once grouped on it.
+        group = [
+            {"title": "Una introducción a la modelización en bloques", "year": "2000",
+             "firstAuthor": "Doreian", "edition": "", "doi": "-"},
+            {"title": "LYON, David. El ojo electrónico", "year": "2000",
+             "firstAuthor": "Gutiérrez", "edition": "", "doi": "-"},
+        ]
+        confident, reason = merge_confidence(group)
+        self.assertFalse(confident)
+        self.assertEqual(reason, "different authors")
+
+
+class ParallelWorkTests(unittest.TestCase):
+    """Same author, same year, same publisher, one word apart — and two works.
+
+    Of 40 candidates grouped at 0.90 fuzzy similarity on a real library, none
+    was a duplicate. These are the shapes that fooled the score.
+    """
+
+    def test_a_volume_number_is_not_a_typo(self):
+        group = [
+            {"title": "Internet y redes sociales en Bolivia 2 by AGETIC-BOLIVIA",
+             "year": "2016", "firstAuthor": "", "edition": ""},
+            {"title": "Internet y redes sociales en Bolivia by AGETIC-BOLIVIA",
+             "year": "2016", "firstAuthor": "", "edition": ""},
+        ]
+        confident, reason = merge_confidence(group)
+        self.assertFalse(confident)
+        self.assertIn("series numerals", reason)
+
+    def test_two_guides_for_two_audiences(self):
+        group = [
+            {"title": "Guía de uso de las herramientas de IA para el profesorado",
+             "year": "2023", "firstAuthor": "UNED", "edition": ""},
+            {"title": "Guía de uso de las herramientas de IA para el estudiantado",
+             "year": "2023", "firstAuthor": "UNED", "edition": ""},
+        ]
+        confident, reason = merge_confidence(group)
+        self.assertFalse(confident)
+        self.assertIn("titles differ", reason)
+
+    def test_the_same_encyclopedia_entry_in_two_languages(self):
+        group = [
+            {"title": "Hacktivism", "year": "2016", "firstAuthor": "",
+             "edition": "", "type": "encyclopediaArticle"},
+            {"title": "Hacktivismo", "year": "2016", "firstAuthor": "",
+             "edition": "", "type": "encyclopediaArticle"},
+        ]
+        self.assertFalse(merge_confidence(group)[0])
+
+    def test_identical_titles_do_not_trip_the_word_check(self):
+        group = [
+            {"title": "Network Science", "year": "2016", "firstAuthor": "Barabási"},
+            {"title": "Network science", "year": "2016", "firstAuthor": "Barabasi"},
+        ]
+        self.assertTrue(merge_confidence(group)[0])
+
+    def test_the_content_axis_ignores_the_title_signals(self):
+        # The whole point of that axis: the titles are expected to disagree,
+        # because one of them is the filename.
+        group = [
+            {"title": "Data Visualization in Society", "year": "2025",
+             "firstAuthor": "Engebretsen", "edition": "", "type": "book"},
+            {"title": "Data Visualization in Society Amsterdam University Press 2020",
+             "year": "", "firstAuthor": "", "edition": "", "type": "book"},
+        ]
+        self.assertFalse(merge_confidence(group)[0])            # title axis: two works
+        self.assertTrue(merge_confidence(group, by="content")[0])

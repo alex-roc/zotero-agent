@@ -94,7 +94,7 @@ def title_is_distinctive(text):
 
 
 def author_corroborates(item_title, item_surname):
-    """¿El autor es una señal *independiente* del título?
+    """Is the author a signal *independent* of the title?
 
     El módulo se apoya en que título, año y autor son tres pruebas distintas.
     Deja de ser cierto cuando el título es el propio apellido — pasa con fichas
@@ -111,6 +111,113 @@ def author_corroborates(item_title, item_surname):
         return True          # el título dice bastante más que el apellido
     title = " ".join(words)
     return not (title == surname or title in surname or surname in title)
+
+
+# --- Telling two works apart -------------------------------------------------
+#
+# The hard case in deduplication is not the near-miss, it is the deliberate
+# parallel: same author, same year, same publisher, and a title that differs by
+# one word. A guide "para el profesorado" and one "para el estudiantado". The
+# Wikipedia article "Hacktivism" and its Spanish "Hacktivismo". Volume 1 and
+# volume 2. Part (I) and part (II). Every one of those looks exactly like a
+# duplicate to a similarity score, and none of them is one.
+#
+# Measured: on one library, of 40 candidates grouped at 0.90 fuzzy similarity,
+# **none** was a real duplicate. The signals below are what separated them, each
+# learned from a specific pair that would otherwise have been merged away.
+
+_NUMERAL = re.compile(r"^(?:[0-9]{1,3}|i{1,3}|iv|vi{0,3}|ix|xi{0,2})$", re.I)
+_SERIES_WORDS = frozenset({"vol", "volume", "volumen", "tomo", "part", "parte",
+                           "no", "num", "number", "ed", "book", "libro"})
+
+
+def _isbn_core(text):
+    """The 9 digits an ISBN-10 and its ISBN-13 have in common.
+
+    Same book, two notations: 978 + the ISBN-10 minus its check digit + a new
+    check digit. Comparing the shared core means one record holding the 10 and
+    another holding the 13 are recognised as one book rather than as two.
+    """
+    cores = set()
+    # Split on separators BETWEEN ISBNs (a field can hold several), then strip
+    # the hyphens INSIDE each one. Splitting on hyphens too would compare the
+    # group fragments — "978", "84", "7476" — and call every ISBN from the same
+    # publisher a match.
+    for raw in re.split(r"[,;\s]+", str(text or "")):
+        digits = re.sub(r"[^0-9Xx]", "", raw).upper()
+        if len(digits) == 13 and digits[:3] in ("978", "979"):
+            cores.add(digits[3:12])
+        elif len(digits) == 10:
+            cores.add(digits[:9])
+        elif digits:
+            cores.add(digits)
+    return cores
+
+
+def identifiers_verdict(values, kind="isbn"):
+    """Compare an identifier across a group: 'same', 'different' or 'unknown'.
+
+    An identifier is the strongest evidence available in either direction. Two
+    records carrying the same ISBN are one work even when their years disagree —
+    Taylor and Bogdan 1992 and 1996 share one because the second is the reprint.
+    Two carrying *different* ones are two works even when everything else
+    matches: Hull's "The Effect of Essentialism on Taxonomy" parts (I) and (II)
+    agree on author, year and almost the whole title, and are told apart only by
+    their DOIs.
+
+    Records that carry none are unknowns, never disagreements.
+    """
+    present = []
+    for v in values:
+        text = str(v or "").strip()
+        if not text or text in ("-", "n/a", "na", "none"):
+            continue
+        present.append(_isbn_core(text) if kind == "isbn"
+                       else {norm_title(text).replace(" ", "")})
+    present = [p for p in present if p]
+    if len(present) < 2:
+        return "unknown"
+    shared = set.intersection(*present)
+    return "same" if shared else "different"
+
+
+def series_numeral(titles):
+    """The numeral that is the ONLY difference between these titles, if any.
+
+    Looks at *what* differs, not where the number sits, so it catches both
+    "... (II)" at the end and "Internet y redes sociales en Bolivia 2 by AGETIC"
+    in the middle. Two works in a series share the author, the year and nearly
+    the whole title: neither similarity nor an identifier separates them, this
+    numeral does.
+    """
+    sets = [set(norm_title(t).split()) for t in titles]
+    if not all(sets):
+        return None
+    diff = set.union(*sets) - set.intersection(*sets)
+    if not diff:
+        return None
+    if any(not _NUMERAL.match(w) and w not in _SERIES_WORDS for w in diff):
+        return None
+    numerals = sorted(w for w in diff if _NUMERAL.match(w))
+    return ", ".join(numerals) or None
+
+
+def contrasting_words(titles):
+    """Significant words present in one title and absent from another.
+
+    This is the parallel-work detector: "para el profesorado" against "para el
+    estudiantado", "Hacktivism" against "Hacktivismo". Deliberately strict —
+    a title that differs by a real word is a different title until a shared
+    identifier says otherwise.
+    """
+    sets = [set(significant_words(t)) for t in titles]
+    if not all(sets):
+        return None
+    diff = set.union(*sets) - set.intersection(*sets)
+    diff = {w for w in diff if not _NUMERAL.match(w) and w not in _SERIES_WORDS}
+    if not diff:
+        return None
+    return ", ".join("%r" % w for w in sorted(diff)[:4])
 
 
 def title_similarity(a, b):
