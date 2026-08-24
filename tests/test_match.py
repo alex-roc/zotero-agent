@@ -129,65 +129,6 @@ class VerifyAcceptsTheRightWork(unittest.TestCase):
         self.assertTrue(match.surname_present("", ["Anybody"]))
 
 
-
-
-class VagueTitles(unittest.TestCase):
-    """A title has to identify a work before similarity means anything.
-
-    Measured on a library whose items were created from PDF filenames: every one
-    of these matched a real Crossref record at similarity 1.000 — a perfect
-    match against a completely different work. Similarity cannot catch this;
-    only refusing to trust the title can.
-    """
-
-    PERFECT_BUT_MEANINGLESS = [
-        ("deposito", "Deposito"),
-        ("vermis", "Vermis"),
-        ("Esbozo", "Esbozo"),
-        ("Algorithms", "Algorithms"),
-        ("El Giro Afectivo", "El giro afectivo"),
-        ("Bruno Latour", "Bruno Latour"),
-    ]
-
-    def test_a_vague_title_is_rejected_even_at_perfect_similarity(self):
-        for item_title, candidate_title in self.PERFECT_BUT_MEANINGLESS:
-            with self.subTest(title=item_title):
-                ok, sim, reason = match.verify(
-                    item_title, "", "",
-                    {"title": candidate_title, "year": None, "authors": []})
-                self.assertFalse(ok, "should have rejected %r" % candidate_title)
-                self.assertEqual(reason, "vague-title")
-                self.assertGreaterEqual(sim, 0.95,
-                                        "the point is that similarity was fine")
-
-    def test_a_specific_title_still_passes_uncorroborated(self):
-        for title in ["Ética de la inteligencia artificial",
-                      "Making sense of world history",
-                      "Enfoques y Metodologias en Las Ciencias Sociales"]:
-            with self.subTest(title=title):
-                ok, _, reason = match.verify(
-                    title, "", "", {"title": title, "year": None, "authors": []})
-                self.assertTrue(ok, "should have accepted %r (reason: %s)" % (title, reason))
-
-    def test_a_vague_title_is_allowed_once_an_author_corroborates(self):
-        # "Algorithms" alone identifies nothing, but with an author it is a
-        # normal lookup again — the guard only covers the uncorroborated case.
-        ok, _, _ = match.verify("Algorithms", "2011", "Dasgupta",
-                                {"title": "Algorithms", "year": 2011,
-                                 "authors": ["Sanjoy Dasgupta"]})
-        self.assertTrue(ok)
-
-    def test_significant_words_drops_fillers_in_both_languages(self):
-        self.assertEqual(match.significant_words("El giro de la ciencia"),
-                         ["giro", "ciencia"])
-        self.assertEqual(match.significant_words("The Art of the Deal"),
-                         ["art", "deal"])
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
 class VagueTitles(unittest.TestCase):
     """A title has to identify a work before similarity means anything.
 
@@ -242,11 +183,11 @@ class VagueTitles(unittest.TestCase):
 
 
 class AuthorMustBeIndependentEvidence(unittest.TestCase):
-    """Un apellido no corrobora un título que ES ese apellido.
+    """A surname does not corroborate a title that IS that surname.
 
-    Ocurre con fichas creadas desde nombres de archivo: "Marias (1980). Historia
-    de la filosofia" se parseó como título "Marias" y autor "Marias". Contado
-    como dos señales, aceptó la tesis doctoral de otra persona homónima.
+    It happens with records created from filenames: "Marias (1980). Historia de
+    la filosofia" was parsed into the title "Marias" and the author "Marias".
+    Counted as two signals, it accepted a namesake's doctoral thesis.
     """
 
     def test_title_equal_to_surname_does_not_corroborate(self):
@@ -263,12 +204,13 @@ class AuthorMustBeIndependentEvidence(unittest.TestCase):
             {"title": "Marias", "year": None, "authors": ["J. Marias"]})
         self.assertFalse(ok)
         self.assertEqual(reason, "vague-title")
-        self.assertEqual(sim, 1.0, "la similitud era perfecta: por eso hacía falta otra señal")
+        self.assertEqual(
+            sim, 1.0, "similarity was perfect: that is why another signal was needed")
 
     def test_a_year_the_candidate_lacks_does_not_corroborate(self):
-        # El ítem tiene año, el candidato no: no hay nada que comparar, así que
-        # el título vago sigue sin estar respaldado. Caso real: "Marias" (1980)
-        # aceptaba una tesis de Unicamp sin fecha.
+        # The item has a year, the candidate does not: nothing to compare, so
+        # the vague title stays uncorroborated. Real case: "Marias" (1980) was
+        # accepting an undated Unicamp thesis.
         ok, sim, reason = match.verify(
             "Marias", "1980", "",
             {"title": "Marias", "year": None, "authors": []})
@@ -281,3 +223,7 @@ class AuthorMustBeIndependentEvidence(unittest.TestCase):
             "Algorithms", "2011", "",
             {"title": "Algorithms", "year": 2011, "authors": []})
         self.assertTrue(ok, "reason: %s" % reason)
+
+
+if __name__ == "__main__":
+    unittest.main()
