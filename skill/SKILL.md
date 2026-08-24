@@ -95,7 +95,7 @@ zot add doi|isbn|arxiv <id> [--pdf] [--collection C]    # import by identifier
 zot add isbn <id> --check-duplicate                     # refuse if already there
 zot attach <key> --file <path> | --url <url> [--link]   # attach to an existing item
 zot pdf-fetch <key…> | --collection C                   # find an open-access PDF
-zot dedupe [--collection C] [--plan f] [--merge]         # find duplicates; plan a merge
+zot dedupe [--by title|doi|content] [--plan f] [--merge] # find duplicates; plan a merge
 zot merge --from plan.jsonl                             # execute a merge plan (NOT undoable)
 zot tag add|rm <tag> <key…>   |   tag rename <old> --new <n>   |   tag purge
 zot set <field> <value> <key…>                          # edit a field
@@ -116,6 +116,7 @@ zot undo last | <op-id> | list        # restore a prior apply/enrich
 zot enrich --field doi|date|abstract --source crossref|openalex [--dry-run]
 zot tag normalize [--map old_new.csv] [--dry-run]   # fold case/space tag variants
 zot dedupe --by title --fuzzy         # near-duplicate titles (Levenshtein)
+zot dedupe --by content               # items sharing a file, whatever their titles
 zot tag from-collections --rules r.json [--out f|--apply]  # tags from the folder tree
 ```
 
@@ -178,8 +179,32 @@ zot merge --from merges.jsonl       # execute what survived (NOT undoable)
 zot dedupe --merge                  # confident groups only; --force for the rest
 ```
 
-The plan carries what you need to decide — edition, publisher, creators, PDF and
-note counts — because key/title/year alone is exactly what is not enough.
+The plan carries what you need to decide — edition, publisher, creators, ISBN,
+PDF and note counts — because key/title/year alone is exactly what is not enough.
+
+**`--by content` finds the duplicates a title never will.** Two items holding the
+same file are the same work even when their titles have nothing in common, and
+that is the usual shape of the problem: on one library all 19 hits had one record
+titled after the *filename* — `2-1-8160`, `Game Programming Patterns (Robert
+Nystrom) z-lib.sk)` — which is what a record created from a filename looks like.
+Because the records disagree about everything, this axis picks the master by
+**metadata richness** (identifier, author, year; a filename-looking title is
+penalised) instead of by age: the stub is often the older of the two. Choosing a
+master that lacks the PDF is safe — Zotero keeps the attachments of everything it
+absorbs.
+
+Two things this axis does differently. The year and the edition stop vetoing,
+because the shared file already settles that it is one document: Taylor and
+Bogdan 1992 and 1996 share an ISBN and a file, and one is the reprint. The author
+and type checks stay, because *those* are what the real false positive looks
+like — **a shared file is not always a duplicate.** A chapter filed with its
+whole book (Dussel inside Lander's *La colonialidad del saber*), a journal issue
+holding several articles, one cover image attached to four papers: all of these
+share bytes and none should be merged. Expect them as ⚠ and read the plan.
+
+Hashing a whole library inside one bridge call would time out, so size comes
+first and md5 runs only where two files already agree on their exact byte count —
+24 hashes out of 2,340 files on a 16 GB library.
 
 **One item shape.** Every command that emits items in `--json` uses the same flat
 record — `key, citekey, type, title, date, year, creators, venue, doi, url, tags,

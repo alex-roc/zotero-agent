@@ -241,19 +241,19 @@ zot add [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 
 ```
 zot dedupe [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
-                  [--debug] [-y] [--json] [--by {title,doi}]
+                  [--debug] [-y] [--json] [--by {title,doi,content}]
                   [--collection COLLECTION] [--plan FILE] [--merge] [--force]
                   [--fuzzy] [--threshold THRESHOLD] [--samples SAMPLES]
 ```
 
 | Argument | Description |
 |----------|-------------|
-| `--by` |  |
+| `--by` | what makes two items the same: their title, their DOI, or the file they share ('content' finds the ones whose titles do not resemble each other) |
 | `--collection` | limit to a collection (key or name); else whole library |
 | `--plan` | write the merge plan as JSONL for review, then run `zot merge --from FILE` |
-| `--merge` | merge the confident groups now (oldest is master); merging is NOT undoable |
+| `--merge` | merge the confident groups now (master is the oldest item, or the best-documented one with --by content); NOT undoable |
 | `--force` | with --merge, also merge groups whose author/year/edition disagree |
-| `--fuzzy` | also group near-identical titles (Levenshtein) |
+| `--fuzzy` | also group near-identical titles (Levenshtein); title axis only |
 | `--threshold` | similarity threshold for --fuzzy (0-1) |
 | `--samples` |  |
 

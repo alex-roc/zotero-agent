@@ -104,6 +104,7 @@ zot missing abstract --collection SS5MVVB6    # items lacking a field
 zot stats                                     # library analytics
 zot add doi 10.1371/journal.pmed.0020124 --pdf   # import + attach an OA PDF
 zot dedupe --plan merges.jsonl                # review duplicates, then `zot merge --from`
+zot dedupe --by content                       # items sharing a file, whatever their titles
 zot enrich --field doi --dry-run              # fill missing DOIs, verified before writing
 zot disk                                      # where the attachment store's gigabytes are
 zot shrink --min-mb 25 --dry-run              # downsample oversized PDFs in place

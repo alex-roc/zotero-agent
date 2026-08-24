@@ -6,6 +6,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`zot dedupe --by content`: the duplicates a title never finds.** The existing
+  axes compare metadata, which misses the most common shape of the problem — two
+  records holding the *same file* under titles that have nothing in common. On a
+  real library this axis found 19 duplicates that title and DOI both missed, and
+  in every one of them a record was titled after the *filename* (`2-1-8160`,
+  `Game Programming Patterns (Robert Nystrom) z-lib.sk)`): what a record created
+  from a filename looks like, and what no title comparison can catch.
+
+  Because the two records disagree about everything, this axis picks the master by
+  **metadata richness** (identifier, author, year, with a filename-looking title
+  penalised) rather than by age — the stub is often the older of the two. Picking
+  a master without the PDF is safe: Zotero keeps the attachments of everything it
+  absorbs.
+
+  The year and the edition stop vetoing here, because the shared file already
+  settles that it is one document (Taylor and Bogdan 1992 and 1996 share an ISBN
+  and a file — one is the reprint). The author and type checks stay, because that
+  is what the real false positive looks like: **a shared file is not always a
+  duplicate.** A chapter filed with its whole book, a journal issue holding
+  several articles, one cover image on four papers — all share bytes, none should
+  be merged. On the same library those were 5 of 24 hits, and all 5 came back ⚠.
+
+  Hashing a whole library inside one bridge call would time out, so size comes
+  first: md5 runs only where two files already agree on their exact byte count —
+  24 hashes across 2,340 files on a 16 GB library.
+
+### Fixed
+- **`detail()` no longer throws on an item whose child rows are not loaded.** The
+  PDF and note counts in a merge plan now degrade to 0 instead of failing the
+  whole scan with `UnloadedDataException`.
+- Removed a duplicated `VagueTitles` test class that shadowed its own first copy,
+  so those assertions were never running.
+
 ## [0.8.4] - 2026-08-19
 
 ### Added
