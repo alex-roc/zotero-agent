@@ -1,22 +1,21 @@
 ---
 name: zotero
 description: >-
-  Control a local Zotero library programmatically — search, read, create, edit,
-  tag, organize into collections, delete, and export items — via the `zot` CLI
-  (read API + the zotero-agent bridge write endpoint). Use whenever the user wants to
-  query or modify their Zotero library, batch-edit references, manage tags or
-  collections, find items missing metadata (no abstract/date/DOI), find
-  duplicates, export citations, or run arbitrary Zotero JS. Also use it to add
-  items by DOI/ISBN/arXiv, find and merge duplicates, edit fields/tags in bulk,
-  get library stats, format bibliographies, read or ask questions about an
-  item's PDF, summarize a document at multiple levels (whole/chapter/section),
-  read a PDF's highlights/annotations, generate a PDF's table of contents /
-  bookmarks / outline so Zotero's reader can navigate it, or create notes on
-  items. Also use it to prepare scanned PDFs: split two-up scans into single
-  pages and OCR them so they can be searched and read. Also use it when the user
-  wants to know where their library's disk space goes or to reclaim it: shrink
-  oversized PDFs, and drop orphan attachments and saved page snapshots. Requires
-  the zotero-agent bridge plugin installed and Zotero running.
+  Control a local Zotero library via the `zot` CLI (read API + the
+  zotero-agent bridge write endpoint): search, read, create, edit, tag,
+  organize into collections, delete, export, and run arbitrary Zotero JS. Use
+  whenever the user wants to query or modify their library, bulk-edit
+  references, fields or tags, manage tags or collections, find items missing
+  metadata (no abstract/date/DOI), get library stats, export citations or
+  format bibliographies, add items by DOI/ISBN/arXiv, find and merge
+  duplicates, or create notes on items. Also for PDFs: read or ask questions
+  about an item's PDF, summarize it at multiple levels
+  (whole/chapter/section), read its highlights/annotations, generate a table
+  of contents / bookmarks / outline for Zotero's reader, and prepare scans —
+  split two-up pages and OCR them to make them searchable. Also to see where
+  disk space goes or reclaim it: shrink oversized PDFs, drop orphan
+  attachments and page snapshots. Requires the zotero-agent bridge plugin
+  installed and Zotero running.
 ---
 
 # Zotero control (via the `zot` CLI)
