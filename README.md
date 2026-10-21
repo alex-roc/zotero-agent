@@ -251,3 +251,8 @@ The core is **stdlib-only**; the optional surfaces ride behind extras (`[mcp]`
 for the MCP server, `[toc]` for the PDF outline commands).
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CHANGELOG.md`](CHANGELOG.md).
 License: [AGPL-3.0-or-later](LICENSE).
+
+## Part of heuretika
+
+zotero-agent is part of [heuretika](https://heuretika.com/products/zotero-agent?ref=zotero-agent-readme),
+a line of local-first desktop software for researchers — instruments for thinking, not machines that think for you.

@@ -45,6 +45,7 @@ Documentation = "https://alex-roc.github.io/zotero-agent"
 Repository = "https://github.com/alex-roc/zotero-agent"
 Issues = "https://github.com/alex-roc/zotero-agent/issues"
 Changelog = "https://github.com/alex-roc/zotero-agent/blob/main/CHANGELOG.md"
+heuretika = "https://heuretika.com/products/zotero-agent?ref=zotero-agent-pypi"
 
 [tool.hatch.version]
 path = "src/zotero_agent/__init__.py"

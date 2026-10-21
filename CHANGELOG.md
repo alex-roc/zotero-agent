@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- The README and the PyPI project links now point to [heuretika](https://heuretika.com/products/zotero-agent),
+  the line of local-first research software zotero-agent belongs to.
+
 ## [0.8.5] - 2026-08-24
 
 ### Added
