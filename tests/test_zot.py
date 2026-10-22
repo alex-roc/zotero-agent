@@ -88,6 +88,20 @@ class TestResolveKey(unittest.TestCase):
     def test_keys_from_args(self):
         self.assertEqual(resolve.keys_from(["A", "B"]), ["A", "B"])
 
+    def test_keys_from_splits_a_joined_argument(self):
+        # zsh passes an unquoted $keys as one argument with the spaces inside.
+        self.assertEqual(resolve.keys_from(["AB12CD34 EF56GH78 ", "@smith2020"]),
+                         ["AB12CD34", "EF56GH78", "@smith2020"])
+
+    def test_whitespace_never_reaches_bbt(self):
+        from unittest import mock
+        with mock.patch.object(resolve, "bbt_rpc") as rpc, \
+             mock.patch.object(resolve, "die", side_effect=SystemExit) as die:
+            with self.assertRaises(SystemExit):
+                resolve.resolve_key({}, "AB12CD34 EF56GH78")
+            rpc.assert_not_called()
+            self.assertIn("separate arguments", die.call_args[0][0])
+
 
 class TestJsLib(unittest.TestCase):
     def test_scope_switches_on_collection(self):

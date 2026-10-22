@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Several keys in one argument no longer crash with a Better BibTeX error.** zsh
+  does not word-split an unquoted variable, so `zot shrink $keys` arrived as a
+  single argument with spaces inside, was searched as a citekey and died with
+  `Invalid condition 'groupStart' in hasOperator()`. Key arguments are now split
+  on whitespace (as stdin already was), and anything with a space that still
+  reaches the resolver fails with a message that says what to do.
+
 ### Changed
 - The README and the PyPI project links now point to [heuretika](https://heuretika.com/products/zotero-agent),
   the line of local-first research software zotero-agent belongs to.
