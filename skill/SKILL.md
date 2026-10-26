@@ -107,6 +107,23 @@ zot shrink <key…> | --min-mb N [--dry-run]              # downsample fat PDFs 
 zot gc [--orphans] [--snapshots] [--empty-trash]        # drop what nothing points at
 ```
 
+**`zot add isbn` inherits whatever the catalogue says, and catalogues lie about
+item type.** Importing Gotkowitz's *A Revolution for Our Rights* (a Duke
+University Press monograph) by its ISBN produced a **`journalArticle`** whose
+`publicationTitle` was `Duke backfile` — the shape of the K10plus record it came
+from, not of the book. Nothing in the output flags this; the item just lands
+mistyped, and `itemType` is the one field `zot set` cannot repair.
+
+So when the identifier import is *seeding* a collection rather than filling a
+known gap, check the type of what arrived (`zot get <key> --raw`) before adding
+the next fifty. For a curated list you already have verified metadata for —
+building a reading list or a canon from published sources — creating the items
+directly (`Zotero.Item`, one `executeTransaction`, see recipes.md) is both
+faster and cleaner than an ISBN round-trip per title: you control the type,
+the creator order and the publisher string, and every record comes out
+consistent. Reserve `add isbn` for the one-off addition where the catalogue
+lookup saves you the typing.
+
 Batch / higher-level (all **undoable** except merges — see safety below):
 
 ```bash
@@ -214,6 +231,18 @@ Because the records disagree about everything, this axis picks the master by
 penalised) instead of by age: the stub is often the older of the two. Choosing a
 master that lacks the PDF is safe — Zotero keeps the attachments of everything it
 absorbs.
+
+**Verify that claim after every merge, though.** Merging two records of the same
+book (a 2025 monograph and its `_v1.1` re-export) left the absorbed item's PDF
+**in the trash with it**, orphaned, rather than reparented onto the survivor —
+and the two files were genuinely different (2,950,665 vs 2,889,724 bytes, same
+194 pages, different revision), so the loss would have been real and silent. The
+fix is cheap once you know to look: un-trash the attachment and set its
+`parentID` to the survivor. So after a merge that mattered, list the survivor's
+attachments (`item.getAttachments()`) and confirm the count is the sum of both
+sides before emptying the trash. Observed 2026-09-16; not reproduced across all
+merge paths, so treat it as a check to run rather than a rule about how merge
+behaves.
 
 Two things this axis does differently. The year and the edition stop vetoing,
 because the shared file already settles that it is one document: Taylor and
