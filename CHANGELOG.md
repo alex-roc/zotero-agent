@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-10-26
+
 ### Added
 - **`zot restart --update`** installs the plugin update right away, from the
   terminal, instead of waiting a day for Zotero's own check or opening *Tools →
