@@ -161,6 +161,17 @@ noisy. `zot toc` writes a real outline into the file, which fixes the sidebar
 permanently and in every other reader too. Needs the `[toc]` extra
 (`uv tool install --force "zotero-agent[toc]"`; a Homebrew install already has it).
 
+**EPUB boundary:** `zot toc` operates on PDF outlines, not EPUB navigation.
+For EPUB creation/repair use [epub-toc.md](epub-toc.md) and its bundled helper.
+For EPUB → PDF conversion, preserve an existing hierarchy from `toc.ncx` or the
+EPUB 3 navigation document. If the source is flat, reconstruct and review the
+part → chapter → section tree before conversion. Generate the visible contents
+and PDF bookmarks from that same tree: changing indentation in the visible
+contents alone does not repair the reader's Outline tab. Join chapter numbers
+and their separately listed titles into one entry when they identify the same
+chapter; keep back matter outside the last chapter. After conversion, verify
+the embedded levels and link destinations against the source structure.
+
 **You are the judgement step.** The CLI gathers evidence and writes the result;
 deciding which lines are chapters and how they nest is your job.
 

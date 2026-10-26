@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **The skill can create or repair an EPUB's table of contents.** A stdlib helper
+  bundled with it (`references/epub_toc.py`, no Zotero needed) reads the
+  navigation as a JSON tree, validates every file and `#fragment` target, and
+  writes the reviewed hierarchy into a new EPUB — updating EPUB 3 `nav` and EPUB 2
+  `toc.ncx` from the same tree, and creating one when the book has none. The
+  original is never touched. This is also the fix for EPUB → PDF conversions
+  whose outline comes out flat: Calibre builds the PDF bookmarks from that
+  navigation, so the nesting carries over.
+
 ### Fixed
 - **Several keys in one argument no longer crash with a Better BibTeX error.** zsh
   does not word-split an unquoted variable, so `zot shrink $keys` arrived as a

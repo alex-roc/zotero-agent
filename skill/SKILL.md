@@ -1,21 +1,21 @@
 ---
 name: zotero
 description: >-
-  Control a local Zotero library via the `zot` CLI (read API + the
-  zotero-agent bridge write endpoint): search, read, create, edit, tag,
+  Control a local Zotero library via `zot`: search, read, create, edit, tag,
   organize into collections, delete, export, and run arbitrary Zotero JS. Use
   whenever the user wants to query or modify their library, bulk-edit
   references, fields or tags, manage tags or collections, find items missing
-  metadata (no abstract/date/DOI), get library stats, export citations or
-  format bibliographies, add items by DOI/ISBN/arXiv, find and merge
+  metadata (no abstract/date/DOI), get stats, export citations or
+  format bibliographies, add items by DOI/ISBN/arXiv, merge
   duplicates, or create notes on items. Also for PDFs: read or ask questions
   about an item's PDF, summarize it at multiple levels
   (whole/chapter/section), read its highlights/annotations, generate a table
-  of contents / bookmarks / outline for Zotero's reader, and prepare scans —
+  of contents / bookmarks / outline for Zotero's reader, create or repair EPUB
+  navigation hierarchies (NCX and EPUB 3 nav), and prepare scans —
   split two-up pages and OCR them to make them searchable. Also to see where
   disk space goes or reclaim it: shrink oversized PDFs, drop orphan
-  attachments and page snapshots. Requires the zotero-agent bridge plugin
-  installed and Zotero running.
+  attachments and page snapshots. Library operations require the bridge and
+  Zotero running; EPUB helpers work offline.
 ---
 
 # Zotero control (via the `zot` CLI)
@@ -314,6 +314,15 @@ For anything non-trivial, **write the JS to a file** in the scratchpad and run
 The full, canonical recipe book (create/edit items, collections, tags, delete,
 attachments, search conditions, bulk transactions, export, duplicates) is in
 **`references/recipes.md`**. Read it before composing write operations.
+
+## EPUB: create or repair a hierarchical table of contents
+
+Read **`references/epub-toc.md`** for the bundled stdlib helper
+`references/epub_toc.py`: inspect navigation as JSON, decide the hierarchy,
+validate file/fragment targets, then write a new EPUB. It handles EPUB 2 NCX
+and EPUB 3 nav; it does not require Zotero running. This is separate from
+`zot toc`, which operates on PDF items. For EPUB → PDF, keep the visible
+contents and embedded reader outline aligned with the same reviewed tree.
 
 ## PDFs: answer questions, summarize, save notes
 
