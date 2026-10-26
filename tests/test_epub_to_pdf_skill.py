@@ -21,7 +21,7 @@ FILES = {
     'label.html': '<p style="text-align: center">CHAPTER 1</p>' + BREAK,
     'ch1.html': '<h2>Disks</h2><p>Drives shrank from 8 to 5,25 inches (see Figure 1.7) as analysts1 noted.</p>'
                 '<p>Three steps:</p><p>1. Measure.</p><p>2. Compare.</p><p>Then decide.2</p>' + BREAK,
-    'ch1-s1.html': '<h2 id="top">Summary</h2><p>Back to <a href="ch1.html">the start</a>.</p>'
+    'ch1-s1.html': '<h2 id="top">Summary</h2><p>Back to <a href="ch1.html">the start</a>.</p><h4>Fine print</h4>'
                    '<p>1. First note.</p><p>2. Second note.</p>' + BREAK,
     'ch2.html': '<h2>Ending</h2><p>No sections here, but a call3 all the same.</p><p>3. Third note.</p>',
 }
@@ -59,10 +59,10 @@ class EpubToPdfSkillTests(unittest.TestCase):
                 z.writestr('OEBPS/Text/' + name, '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head>'
                            '<body>%s</body></html>' % body)
 
-    def prepare(self):
+    def prepare(self, depth=None):
         before = self.source.read_bytes()
         output = self.base / 'prepared.epub'
-        report = helper.prepare(self.source, output, self.toc)
+        report = helper.prepare(self.source, output, self.toc, depth=depth)
         self.assertEqual(self.source.read_bytes(), before)
         return report, zipfile.ZipFile(output)
 
@@ -98,7 +98,7 @@ class EpubToPdfSkillTests(unittest.TestCase):
 
     def test_notes_are_linked_both_ways_without_false_calls(self):
         report, z = self.prepare()
-        self.assertTrue(report.endswith('3 of 3 notes linked'), report)
+        self.assertIn('; 3 of 3 notes linked;', report)
         chapter = self.doc(z, 'label.html')
         self.assertIn('analysts<sup class="note-call"><a id="call-1-1" href="#note-1-1">1</a></sup> noted', chapter)
         self.assertIn('decide.<sup class="note-call"><a id="call-1-2" href="#note-1-2">2</a></sup>', chapter)
@@ -111,8 +111,45 @@ class EpubToPdfSkillTests(unittest.TestCase):
         self.build(dict(FILES, **{'ch1.html': FILES['ch1.html'].replace('analysts1', 'analysts').replace('decide.2', 'decide.')}))
         report, z = self.prepare()
         # Chapter 1 is rejected, so chapter 2's run, starting at 3, continues nothing.
-        self.assertTrue(report.endswith('0 of 0 notes linked'), report)
+        self.assertIn('; 0 of 0 notes linked;', report)
         self.assertNotIn('note-number', self.doc(z, 'label.html'))
+
+    def read_tree(self, z):
+        path = self.base / 'copy.epub'
+        path.write_bytes(Path(z.filename).read_bytes())
+        with zipfile.ZipFile(path) as archive:
+            return helper.epub_toc.read_tree(helper.epub_toc.Book(archive))
+
+    def with_subheading(self):
+        listing = helper.epub_toc.list_headings(zipfile.ZipFile(self.source), helper.epub_toc.Book(zipfile.ZipFile(self.source)))
+        fine = next(h for f in listing for h in f['headings'] if h['title'] == 'Fine print')
+        self.assertEqual(fine['href'], 'Text/ch1-s1.html#toc-fine-print')
+        tree = json.loads(json.dumps(TREE))
+        tree[0]['children'][0]['children'][0]['children'] = [{'title': 'Fine print', 'href': fine['href']}]
+        return tree
+
+    def test_a_heading_inside_a_file_is_anchored_and_starts_no_page(self):
+        self.toc.write_text(json.dumps(self.with_subheading()))
+        report, z = self.prepare()
+        self.assertTrue(report.startswith('2 files merged'), report)
+        self.assertIn('<h4 id="toc-fine-print">Fine print</h4>', self.doc(z, 'label.html'))
+        summary = self.read_tree(z)[0]['children'][0]['children'][0]
+        self.assertEqual(summary['children'][0]['href'], 'Text/label.html#toc-fine-print')
+
+    def test_depth_trims_the_outline_but_not_the_page_structure(self):
+        self.toc.write_text(json.dumps(self.with_subheading()))
+        report, z = self.prepare(depth=2)
+        self.assertTrue(report.startswith('2 files merged'), report)
+        tree = self.read_tree(z)
+        self.assertEqual([n['title'] for n in helper.epub_toc.walk(tree)], ['Part One', 'Chapter 1. Disks', 'Chapter 2. Ending'])
+
+    def test_break_false_keeps_a_chapter_in_the_flow(self):
+        tree = json.loads(json.dumps(TREE))
+        tree[0]['children'][1]['break'] = False
+        self.toc.write_text(json.dumps(tree))
+        report, z = self.prepare()
+        self.assertTrue(report.startswith('3 files merged'), report)
+        self.assertNotIn('Chapter 2. Ending', report.split(':', 1)[1])
 
     def test_contents_page_is_rebuilt_from_the_tree(self):
         doc = ET.fromstring('<html xmlns="http://www.w3.org/1999/xhtml"><body><h2>Contents</h2>'

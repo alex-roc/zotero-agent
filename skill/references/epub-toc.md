@@ -11,6 +11,7 @@ engine or third-party Python packages. Resolve its path relative to this skill.
 # Set this to the directory of the loaded Zotero skill.
 SKILL_DIR="/path/to/zotero/skill"
 python3 "$SKILL_DIR/references/epub_toc.py" "book.epub" > toc.json
+python3 "$SKILL_DIR/references/epub_toc.py" "book.epub" --headings > headings.json
 python3 "$SKILL_DIR/references/epub_toc.py" "book.epub" --from toc.json --dry-run
 python3 "$SKILL_DIR/references/epub_toc.py" "book.epub" --from toc.json -o "book-with-toc.epub"
 ```
@@ -37,7 +38,21 @@ landmarks and page lists are preserved. Existing book content is not rewritten.
 ```
 
 `href` is relative to the **OPF directory**, independent of where the nav/NCX lives.
-Targets must be local files; fragments must name real `id`/`xml:id` attributes.
+Targets must be local files; fragments must name real `id`/`xml:id` attributes, or
+an id that `--headings` proposed.
+
+**The publisher's navigation usually stops at one entry per file.** Subheadings
+inside a file (`h3`/`h4` sections) are missing from it, and they rarely have an id
+to point at. On the book this was built from, the NCX had 77 entries and the text
+had 46 more subheadings. `--headings` lists every heading of every spine file, in
+reading order, with an `href` to use. That is either the heading's own id or a
+stable proposal (`#toc-<slug>`), which writing the tree adds to that heading;
+both helpers do it. The first heading of a file is usually the entry that already
+points at the file. Weigh the rest one by one: a chapter's subtitle or a title
+page's lines are not sections.
+
+`--depth N` keeps only the first N levels when writing or printing, so one full
+reviewed tree serves a detailed outline and a one- or two-level one.
 There are no page numbers in this format: EPUB pagination is reflowable.
 `--dry-run` validates every file and fragment and prints the proposed tree.
 The output path must not exist and must differ from the input. The original stays
@@ -74,13 +89,14 @@ visible contents page made of one-link paragraphs, and decides where pages start
 ```bash
 python3 "$SKILL_DIR/references/epub_toc.py" "book.epub" > toc.json   # then review it
 python3 "$SKILL_DIR/references/epub_to_pdf.py" "book.epub" --toc toc.json -o "book.pdf"
-python3 "$SKILL_DIR/references/epub_to_pdf.py" "book.epub" --toc toc.json --profile tablet --language es -o "book.pdf"
+python3 "$SKILL_DIR/references/epub_to_pdf.py" "book.epub" --toc toc.json --depth 2 --profile tablet --language es -o "book.pdf"
 uv run --with pymupdf python -c "import pymupdf, sys
 for level, title, page in pymupdf.open(sys.argv[1]).get_toc(): print('  ' * (level - 1) + title, page)" book.pdf
 ```
 
 Profiles: `a4` (default: A4, 14.4 pt, 72 pt margins) and `tablet` (A5, 12 pt, 32 pt);
-`--width/--height` (mm), `--font-size` and `--margin` (pt) override them. The
+`--width/--height` (mm), `--font-size` and `--margin` (pt) override them.
+`--depth N` trims the outline and the visible contents, not the page structure. The
 font defaults to Liberation Serif, embedded from Calibre. The footer reads
 "Página N" or "Page N" by the book's language. **Pass `--language` when the
 metadata is wrong**: it often is in converted EPUBs (a Spanish book declaring
@@ -93,11 +109,14 @@ What the preparation fixes, and why a correct outline alone does not:
   page**; `--page-breaks-before /` only drops its extra break before each `h1`/`h2`.
   Books that keep each section, or just the "CAPÍTULO N" label, in its own file
   break after every section. The helper merges each chapter's files. A page starts
-  at every top-level entry, at every entry with children and at their siblings, so
-  a chapter without sections still starts one. A short label page that no entry
-  points to joins the chapter it announces. Links, ids and the tree follow the
-  merge, and the forced `page-break-before: always` that such files end with is
-  removed.
+  at every top-level entry, and at every entry that has children *in other files*
+  and at its siblings, so a chapter without sections still starts one. An entry in
+  its parent's file (a subheading) never starts a page. A short label page that no
+  entry points to joins the chapter it announces. Links, ids and the tree follow
+  the merge, and the forced `page-break-before: always` that such files end with
+  is removed. The report lists the entries that start a page; check it. Where the
+  rule guesses wrong, set `"break": true` or `"break": false` on the entry. A
+  book with chapters in single files under parts is ambiguous, for example.
 - **Notes as plain text.** Scanned-and-OCRed EPUBs keep the call as a digit glued
   to the word (`análisis8.`, `previos.17 De`) and the notes as `<p>8. …</p>` closing
   the chapter, unlinked. Only a consecutive run that closes a chapter and starts at 1

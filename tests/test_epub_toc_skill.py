@@ -100,6 +100,29 @@ class EpubTocSkillTests(unittest.TestCase):
         result = self.run_helper(source, '--from', self.plan_path, '--dry-run')
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_writing_anchors_a_listed_heading(self):
+        source = self.fixture()
+        heading = self.run_helper(source, '--headings')
+        self.assertEqual(json.loads(heading.stdout)[0]['headings'][0]['href'], 'Text/chapter.xhtml#section')
+        with zipfile.ZipFile(source) as z:
+            files = {i.filename: z.read(i.filename) for i in z.infolist()}
+        files['OEBPS/Text/chapter.xhtml'] = files['OEBPS/Text/chapter.xhtml'].replace(b'</body>', b'<h2>Late Section</h2></body>')
+        source.unlink()
+        with zipfile.ZipFile(source, 'w') as z:
+            for name, content in files.items():
+                z.writestr(name, content)
+        listed = json.loads(self.run_helper(source, '--headings').stdout)[0]['headings'][1]
+        self.assertEqual(listed['href'], 'Text/chapter.xhtml#toc-late-section')
+        self.plan[0]['children'].append({'title': 'Late', 'href': listed['href']})
+        self.plan_path.write_text(json.dumps(self.plan))
+        output = self.base / 'output.epub'
+        result = self.run_helper(source, '--from', self.plan_path, '-o', output)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with zipfile.ZipFile(output) as z:
+            self.assertIn(b'<h2 id="toc-late-section">Late Section</h2>', z.read('OEBPS/Text/chapter.xhtml'))
+        shallow = json.loads(self.run_helper(output, '--depth', '1').stdout)
+        self.assertEqual(shallow, [{'title': 'Part', 'href': 'Text/chapter.xhtml', 'children': []}])
+
     def test_bad_fragment_rejected_without_output(self):
         source = self.fixture()
         self.plan[0]['href'] = 'Text/chapter.xhtml#absent'

@@ -2,12 +2,13 @@
 """Convert an EPUB to a paginated PDF with Calibre, keeping a reviewed outline.
 
 python3 epub_to_pdf.py book.epub --toc toc.json -o book.pdf
-python3 epub_to_pdf.py book.epub --profile tablet -o book.pdf
+python3 epub_to_pdf.py book.epub --toc toc.json --depth 2 --profile tablet -o book.pdf
 python3 epub_to_pdf.py book.epub --toc toc.json --prepare-only prepared.epub
 
 Calibre converts a temporary copy, prepared so that:
-- the tree from --toc (JSON as written by epub_toc.py; default: the EPUB's own
-  navigation) fills the NCX/nav, and so becomes the PDF outline;
+- the tree from --toc (JSON as written by epub_toc.py, headings from its
+  --headings included; default: the EPUB's own navigation), cut to --depth
+  levels, fills the NCX/nav, and so becomes the PDF outline;
 - each chapter's spine files are merged, since Calibre starts every file on a page;
 - notes typed as plain text (a digit glued to a word, "8. ..." paragraphs closing
   the chapter) become superscript calls linked both ways;
@@ -87,25 +88,33 @@ def namespace(node):
 
 
 def merge_chapters(docs, spine, tree, opf_dir, keep_apart=()):
-    """Merge each chapter's spine files into its first one; return the absorbed files.
+    """Merge each chapter's spine files into its first one.
 
-    A page starts at every top-level entry, at every entry with children, and at
-    their siblings (so a chapter without sections still starts one). Everything
-    else joins the file before it, except a short label page that no entry points
-    to ("CAPÍTULO 2"), which joins the chapter it announces. Rewrites links, paths
-    and the tree's hrefs to the merged files.
+    A page starts at every top-level entry, and at every entry with children in
+    other files, and at its siblings (so a chapter without sections still starts
+    one), unless the entry stays in its parent's file: headings inside a file never
+    start a page. `"break": true/false` on an entry overrides this for its file.
+    Everything else joins the file before it, except a short label page no entry
+    points to ("CAPÍTULO 2"), which joins the chapter it announces. Rewrites links,
+    paths and the tree's hrefs to the merged files. Returns the absorbed files and
+    the titles of the entries that start a page.
     """
     def target(href):
         return posixpath.normpath(posixpath.join(opf_dir, unquote(href.partition('#')[0])))
-    starts, referenced = set(), set()
-    def mark(nodes, top):
-        branch = top or any(node.get('children') for node in nodes)
+    starts, referenced, vetoed, titles = set(), set(), set(), []
+    def mark(nodes, parent):
+        branch = parent is None or any(target(child['href']) != target(node['href'])
+                                       for node in nodes for child in node.get('children') or [])
         for node in nodes:
             referenced.add(target(node['href']))
-            if branch:
+            if node.get('break', branch and (parent is None or target(node['href']) != target(parent['href']))):
                 starts.add(target(node['href']))
-            mark(node.get('children') or [], False)
-    mark(tree, True)
+                titles.append(node['title'])
+            elif node.get('break') is False:
+                vetoed.add(target(node['href']))
+            mark(node.get('children') or [], node)
+    mark(tree, None)
+    starts -= vetoed
     for name in keep_apart:
         if name in spine:
             starts.add(name)
@@ -113,7 +122,7 @@ def merge_chapters(docs, spine, tree, opf_dir, keep_apart=()):
                 starts.add(spine[spine.index(name) + 1])
     for name, following in zip(spine, spine[1:], strict=False):
         if (name not in referenced and following in starts and not docs[name].findall('.//{*}img')
-                and len(epub_toc.text(docs[name].find('{*}body'))) <= LABEL_CHARS):
+                and following not in vetoed and len(epub_toc.text(docs[name].find('{*}body'))) <= LABEL_CHARS):
             starts.discard(following)
             starts.add(name)
     host, current = {}, None
@@ -186,7 +195,7 @@ def merge_chapters(docs, spine, tree, opf_dir, keep_apart=()):
             style = node.get('style')
             if style and 'break' in style:
                 node.set('style', FORCED_BREAK.sub('', style).strip())
-    return absorbed
+    return absorbed, titles
 
 
 def link_notes(docs, spine):
@@ -307,8 +316,8 @@ def rebuild_contents(doc, tree, name, opf_dir):
             return
 
 
-def prepare(epub, output, toc=None, font_dir=None):
-    """Write the EPUB that Calibre converts; return a one-line report."""
+def prepare(epub, output, toc=None, font_dir=None, depth=None):
+    """Write the EPUB that Calibre converts; return a report."""
     with zipfile.ZipFile(epub) as archive:
         book = epub_toc.Book(archive)
         if toc is not None:
@@ -330,7 +339,9 @@ def prepare(epub, output, toc=None, font_dir=None):
         for name in book.documents:
             if name in docs:  # an EPUB 3 nav is also an XHTML document: share one tree
                 book.documents[name] = docs[name]
-        absorbed = merge_chapters(docs, spine, tree, book.opf_dir, keep_apart=book.documents)
+        epub_toc.anchor_headings(tree, docs, book.opf_dir)
+        absorbed, starts = merge_chapters(docs, spine, tree, book.opf_dir, keep_apart=book.documents)
+        tree = epub_toc.prune(tree, depth)
         for item in list(manifest):
             if book.path(item.get('href')) in absorbed:
                 manifest.remove(item)
@@ -363,7 +374,8 @@ def prepare(epub, output, toc=None, font_dir=None):
         changes[book.opf_name] = opf
         changes.update(epub_toc.apply_tree(archive, book, tree, opf=opf))
         epub_toc.write_epub(archive, changes, Path(output), removed=set(absorbed))
-    return ('%d files merged into their chapters; %d of %d notes linked' % (len(absorbed), linked, notes))
+    return ('%d files merged into their chapters; %d of %d notes linked; %d entries start a page:\n  %s'
+            % (len(absorbed), linked, notes, len(starts), '\n  '.join(starts)))
 
 
 def find_calibre(given):
@@ -392,6 +404,7 @@ def main():
     parser.add_argument('epub', type=Path)
     parser.add_argument('-o', '--output', type=Path, help='default: next to the EPUB, same name, .pdf')
     parser.add_argument('--toc', type=Path, help='reviewed JSON tree (epub_toc.py format)')
+    parser.add_argument('--depth', type=int, help='outline and contents levels to keep (default: all)')
     parser.add_argument('--profile', choices=sorted(PROFILES), default='a4')
     parser.add_argument('--width', type=positive)
     parser.add_argument('--height', type=positive)
@@ -410,6 +423,8 @@ def main():
     source = args.epub.expanduser().resolve()
     if not source.is_file() or source.suffix.lower() != '.epub':
         parser.error('the input must be an existing .epub')
+    if args.depth is not None and args.depth < 1:
+        parser.error('--depth must be at least 1')
     if not 6 <= args.font_size <= 40:
         parser.error('--font-size must be between 6 and 40 points')
     if args.margin * 2 >= min(args.width, args.height) * 72 / 25.4:
@@ -423,7 +438,7 @@ def main():
     if args.prepare_only:
         if args.prepare_only.exists():
             parser.error('the prepared EPUB must be a new file')
-        print(prepare(source, args.prepare_only, args.toc, font_dir), file=sys.stderr)
+        print(prepare(source, args.prepare_only, args.toc, font_dir, args.depth), file=sys.stderr)
         print(args.prepare_only)
         return
     if not calibre:
@@ -442,7 +457,7 @@ def main():
         work = Path(work)
         (work / 'extra.css').write_text(css, encoding='utf-8')
         prepared, pdf = work / 'prepared.epub', work / 'book.pdf'
-        print(prepare(source, prepared, args.toc, font_dir), file=sys.stderr)
+        print(prepare(source, prepared, args.toc, font_dir, args.depth), file=sys.stderr)
         command = [calibre, str(prepared), str(pdf), '--unit', 'millimeter',
                    '--custom-size', '%gx%g' % (args.width, args.height),
                    '--pdf-page-margin-left', str(args.margin), '--pdf-page-margin-right', str(args.margin),
