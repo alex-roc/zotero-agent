@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-10-26
+
 ### Added
 - **The skill converts EPUBs to PDF with a reviewed outline**
   (`references/epub_to_pdf.py`, stdlib plus Calibre). The tree you reviewed with
@@ -20,6 +22,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   On a 450-page book this gave 323 pages and 151 of 155 notes linked; the other four
   calls are missing from the source.
+- **Subheadings can enter the table of contents, to the depth you choose.**
+  Publishers' navigation usually stops at one entry per file. `epub_toc.py
+  --headings` lists every heading with an `href`; one without an id gets a stable
+  proposed id, which writing the tree adds to it. `--depth N` on both helpers keeps
+  only the first N levels, so one reviewed tree serves a detailed or a short
+  outline.
 
 ## [0.8.6] - 2026-10-26
 
