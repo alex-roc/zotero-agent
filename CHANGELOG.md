@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-10-26
+
 ### Added
 - **The skill can create or repair an EPUB's table of contents.** A stdlib helper
   bundled with it (`references/epub_toc.py`, no Zotero needed) reads the

@@ -3,15 +3,14 @@
     "zotero-agent-bridge@zotero-agent": {
       "updates": [
         {
-          "version": "0.8.5",
-          "update_link": "https://github.com/alex-roc/zotero-agent/releases/download/v0.8.5/zotero-agent-bridge-0.8.5.xpi",
+          "version": "0.8.6",
+          "update_link": "https://github.com/alex-roc/zotero-agent/releases/download/v0.8.6/zotero-agent-bridge-0.8.6.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",
               "strict_max_version": "10.*"
             }
-          },
-          "update_hash": "sha256:91692f46969befe08c3893dc96a00bc42b858b02bbcb86482ced6ed4ad992414"
+          }
         }
       ]
     }
