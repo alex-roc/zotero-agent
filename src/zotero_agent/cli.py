@@ -251,6 +251,9 @@ def build_parser():
              "restart Zotero (or reload just the bridge plugin) and wait for it to come back")
     sp.add_argument("--plugin", action="store_true",
                     help="reload only the zotero-agent plugin, leaving Zotero running")
+    sp.add_argument("--update", action="store_true",
+                    help="install the plugin update Zotero's updates.json offers (what "
+                         "Check for Updates does), leaving Zotero running")
     sp.add_argument("--no-launch", dest="no_launch", action="store_true",
                     help="never start the Zotero app; only act on a running one")
     sp.add_argument("--timeout", type=int, default=admin.RESTART_TIMEOUT,

@@ -514,7 +514,7 @@ class TestPluginVersionReporting(unittest.TestCase):
             # 0.10.0 > 0.9.0 numerically; a string comparison would call it older.
             self.assertIn("newer than this CLI", admin._plugin_status("0.10.0"))
             self.assertIn("older than this CLI", admin._plugin_status("0.8.9"))
-            self.assertIn("Check for Updates", admin._plugin_status("0.8.9"))
+            self.assertIn("zot restart --update", admin._plugin_status("0.8.9"))
         with mock.patch.object(admin, "VERSION", "0.10.0"):
             self.assertIn("older than this CLI", admin._plugin_status("0.9.0"))
         with mock.patch.object(admin, "VERSION", "0.2.1"):
@@ -892,6 +892,59 @@ class TestRestart(unittest.TestCase):
         with self.assertRaises(ZotError) as ctx:
             self._run([self.DOWN], plugin=True, yes=True)
         self.assertIn("no plugin to reload", str(ctx.exception))
+
+    OLD = {"ok": True, "result": 2, "version": "0.0.1"}
+
+    def test_plugin_update_waits_for_the_bridge_to_answer_with_the_new_version(self):
+        """The cycle's report alone is not enough: until the swap is done the old
+        plugin is the one answering."""
+        with mock.patch.object(admin.secrets, "token_hex", return_value="deadbeef"), \
+             mock.patch.object(admin, "VERSION", "9.9.9"):
+            out, m = self._run([self.OLD, self.DOWN,
+                                {"ok": True, "result": "deadbeef installed 9.9.9", "version": "0.0.1"},
+                                {"ok": True, "result": "deadbeef installed 9.9.9", "version": "9.9.9"},
+                                {"ok": True, "result": True}],
+                               update=True, yes=True, timeout=5)
+        sent = m["run_js"].call_args[0][1]
+        self.assertIn("findUpdates", sent, "the update must go through updates.json")
+        self.assertIn("UPDATE_WHEN_USER_REQUESTED", sent)
+        self.assertIn("w.eval(", sent, "the swap must run outside the plugin's own scope")
+        self.assertIn("Bridge is back", out)
+        self.assertIn("9.9.9", out)
+
+    def test_plugin_update_reports_when_nothing_is_offered(self):
+        with mock.patch.object(admin.secrets, "token_hex", return_value="deadbeef"), \
+             mock.patch.object(admin, "VERSION", "9.9.9"):
+            with self.assertRaises(ZotError) as ctx:
+                self._run([self.OLD, {"ok": True, "result": "deadbeef none", "version": "0.0.1"},
+                           {"ok": True, "result": True}], update=True, yes=True, timeout=5)
+        self.assertIn("no plugin update", str(ctx.exception))
+
+    def test_plugin_update_surfaces_zotero_s_error(self):
+        with mock.patch.object(admin.secrets, "token_hex", return_value="deadbeef"), \
+             mock.patch.object(admin, "VERSION", "9.9.9"):
+            with self.assertRaises(ZotError) as ctx:
+                self._run([self.OLD, {"ok": True, "result": "deadbeef error Error: hash mismatch"},
+                           {"ok": True, "result": True}], update=True, yes=True, timeout=5)
+        self.assertIn("hash mismatch", str(ctx.exception))
+
+    def test_a_current_plugin_is_not_updated(self):
+        with mock.patch.object(admin, "VERSION", "9.9.9"):
+            out, m = self._run([self.UP], update=True)   # no --yes: nothing to confirm
+        m["run_js"].assert_not_called()
+        self.assertIn("already matches", out)
+
+    def test_a_plugin_newer_than_the_cli_is_left_alone(self):
+        with mock.patch.object(admin, "VERSION", "0.0.1"):
+            with self.assertRaises(ZotError) as ctx:
+                self._run([self.UP], update=True, yes=True)
+        self.assertIn("uv tool upgrade", str(ctx.exception))
+
+    def test_plugin_update_needs_confirmation(self):
+        with mock.patch.object(admin, "VERSION", "9.9.9"):
+            with self.assertRaises(ZotError) as ctx:
+                self._run([self.OLD], update=True)
+        self.assertIn("--yes", str(ctx.exception))
 
     def test_a_remote_base_is_never_launched_locally(self):
         self.assertTrue(is_loopback({"base": "http://127.0.0.1:23119"}))

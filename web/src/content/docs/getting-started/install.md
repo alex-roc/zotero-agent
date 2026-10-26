@@ -175,7 +175,15 @@ other plugin — the manual XPI install happens exactly once.
 
 Zotero checks **once a day** (`extensions.update.interval` = 86400s), so straight
 after a release `zot ping` may still show the previous plugin version. To pull it
-in now:
+in now, from the terminal:
+
+```bash
+zot restart --update   # what Check for Updates does, for this plugin only
+```
+
+It asks Zotero to check `updates.json`, installs what it offers (verified against
+its `update_hash`, like any update) and waits until the bridge answers with the new
+version; Zotero stays open. Or, in Zotero:
 
 *Tools → Plugins → the **gear icon** (top-right of the Plugins window) → **Check
 for Updates***

@@ -470,13 +470,14 @@ zot sync [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
 
 ```
 zot restart [-h] [--base BASE] [--token TOKEN] [--user-id USER_ID] [-q]
-                   [--debug] [-y] [--json] [--plugin] [--no-launch]
+                   [--debug] [-y] [--json] [--plugin] [--update] [--no-launch]
                    [--timeout TIMEOUT]
 ```
 
 | Argument | Description |
 |----------|-------------|
 | `--plugin` | reload only the zotero-agent plugin, leaving Zotero running |
+| `--update` | install the plugin update Zotero's updates.json offers (what Check for Updates does), leaving Zotero running |
 | `--no-launch` | never start the Zotero app; only act on a running one |
 | `--timeout` | seconds to wait for the bridge to answer again (default: 90) |
 

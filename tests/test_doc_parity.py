@@ -63,6 +63,7 @@ SHARED_FACTS = {
         (r"command -v zot", "which install wins when two routes are present"),
         (r"zot source", "the ping line that names the answering install"),
         (r"zot restart --plugin", "the CLI way out of a manual Zotero restart"),
+        (r"zot restart --update", "the CLI way to force a plugin update"),
         (r"both extras|extras included|everything", "that brew ships the extras, "
                                                     "since a keg cannot gain them later"),
     ],

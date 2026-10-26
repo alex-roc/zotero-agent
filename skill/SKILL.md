@@ -43,7 +43,8 @@ If Zotero is simply not running, or the plugin needs the restart Zotero keeps
 asking for, `zot restart` handles it without the user touching the app — it waits
 for the bridge to answer again. It is disruptive, so ask first and then pass
 `--yes`: `zot restart --plugin --yes` reloads only the bridge (Zotero stays
-open), `zot restart --yes` restarts Zotero, and with Zotero down it starts it.
+open), `zot restart --update --yes` installs a pending plugin update,
+`zot restart --yes` restarts Zotero, and with Zotero down it starts it.
 
 > Beyond this skill (Claude Code), `zot mcp` exposes the same operations as an
 > MCP server for Claude Desktop, Codex CLI, Gemini CLI and Cursor. See the repo's

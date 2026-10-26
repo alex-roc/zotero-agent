@@ -192,7 +192,15 @@ XPI by hand exactly once.
 
 Zotero checks **once every 24 hours** (`extensions.update.interval`), so right
 after a release your plugin will still report the old version for a while. That
-is normal. To pull it in immediately:
+is normal. To pull it in immediately, from the terminal:
+
+```bash
+zot restart --update   # what Check for Updates does, for this plugin only
+```
+
+It asks Zotero to check `updates.json`, installs what it offers (verified against
+its `update_hash`, as any update is) and waits until the bridge answers with the
+new version; Zotero stays open. Or, in Zotero:
 
 *Tools → Plugins → the **gear icon** (top-right of the Plugins window) → **Check
 for Updates***

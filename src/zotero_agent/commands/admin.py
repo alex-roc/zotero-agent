@@ -85,8 +85,7 @@ def _plugin_status(plugin_version):
     mine, theirs = _version_tuple(VERSION), _version_tuple(plugin_version)
     if theirs < mine:
         return ("%s — older than this CLI (%s); Zotero auto-updates it, or force "
-                "it now: Tools -> Plugins -> gear -> Check for Updates"
-                % (plugin_version, VERSION))
+                "it now: zot restart --update" % (plugin_version, VERSION))
     if theirs > mine:
         return ("%s — newer than this CLI (%s); upgrade it: uv tool upgrade zotero-agent"
                 % (plugin_version, VERSION))
@@ -305,6 +304,36 @@ _CLEAR_NONCE_JS = "Zotero.Prefs.clear(%(noncepref)s, true); return true;"
 NONCE_PREF = "extensions.zotero-agent.reloadNonce"
 RELOAD_GAP_MS = 1200       # how long the plugin stays disabled
 
+# Updating is Zotero's own *Check for Updates* for this one add-on: it reads
+# `updates.json` and verifies the XPI against its `update_hash`, the channel the
+# plugin auto-updates through anyway. Installing a fresh XPI swaps the running
+# plugin, so — like the reload — it runs in the window's realm and reports
+# through the pref, as "<nonce> installed <version>", "<nonce> none" or
+# "<nonce> error <message>".
+_UPDATE_CYCLE_JS = """
+setTimeout(async function () {
+  var report = function (outcome) { Zotero.Prefs.set(%(noncepref)s, %(nonce)s + ' ' + outcome, true); };
+  try {
+    var { AddonManager } = ChromeUtils.importESModule('resource://gre/modules/AddonManager.sys.mjs');
+    var addon = await AddonManager.getAddonByID(%(id)s);
+    var install = await new Promise(function (resolve, reject) {
+      addon.findUpdates({
+        onUpdateAvailable: function (a, found) { resolve(found); },
+        onNoUpdateAvailable: function () { resolve(null); },
+        onUpdateFinished: function (a, status) {
+          if (status) reject(new Error('the update check failed (status ' + status + ')'));
+        }
+      }, AddonManager.UPDATE_WHEN_USER_REQUESTED);
+    });
+    if (!install) return report('none');
+    await install.install();
+    report('installed ' + install.version);
+  } catch (e) {
+    report('error ' + e);
+  }
+}, %(delay)d);
+"""
+
 
 def _js(template, **extra):
     """Fill a fragment above, JSON-quoting every value that lands in the JS."""
@@ -387,6 +416,8 @@ def _restart_done(args, action, version, started):
     if getattr(args, "json", False):
         print(json.dumps({"ok": True, "action": action, "plugin": version,
                           "seconds": round(seconds, 1)}, indent=2))
+    elif action == "none":
+        print("The plugin already matches this CLI (%s); nothing to update." % version)
     else:
         print("Bridge is back after %.0fs (plugin %s)." % (seconds, version or "unknown"))
 
@@ -399,7 +430,20 @@ def cmd_restart(args):
     started = time.monotonic()
     timeout = getattr(args, "timeout", None)
     timeout = RESTART_TIMEOUT if timeout is None else timeout
-    alive, _ = _probe(cfg)
+    alive, plugin_version = _probe(cfg)
+
+    if getattr(args, "update", False):
+        if not alive:
+            die("the bridge is not answering, so there is no plugin to update. "
+                "Run `zot restart` to start Zotero first.", code=EXIT_CONN)
+        if plugin_version == VERSION:
+            return _restart_done(args, "none", plugin_version, started)
+        if plugin_version and _version_tuple(plugin_version) > _version_tuple(VERSION):
+            die("the plugin (%s) is already newer than this CLI (%s); upgrade the "
+                "CLI instead: uv tool upgrade zotero-agent" % (plugin_version, VERSION),
+                code=EXIT_GENERIC)
+        confirm_write(args, "This updates the zotero-agent plugin inside a running Zotero.")
+        return _update_plugin(cfg, args, timeout, started)
 
     if getattr(args, "plugin", False):
         if not alive:
@@ -476,6 +520,44 @@ def _reload_plugin(cfg, args, timeout, started):
                 "still be running: check `zot ping`, and if the endpoint stays "
                 "down, re-enable Zotero Agent Bridge in Tools -> Plugins (or run "
                 "`zot restart`)." % timeout, code=EXIT_CONN)
+
+
+def _update_plugin(cfg, args, timeout, started):
+    """Install the plugin release that `updates.json` offers, without the Plugins
+    window and without waiting for Zotero's daily check.
+
+    Success needs both the cycle's own report and the bridge answering with the
+    version it installed: the old plugin keeps answering until the swap is done.
+    """
+    nonce = secrets.token_hex(8)
+    cycle = _js(_UPDATE_CYCLE_JS, nonce=json.dumps(nonce))
+    run_js(cfg, _js(_RELOAD_JS, cycle=json.dumps(cycle)),
+           timeout=PROBE_TIMEOUT + 10, label="restart:update")
+    info("Checking for a plugin update...")
+    deadline = time.monotonic() + timeout
+    while True:
+        time.sleep(POLL_INTERVAL)
+        env = post_code(cfg, _js(_NONCE_JS), timeout=PROBE_TIMEOUT)
+        result = env.get("result") if env.get("ok") else None
+        if isinstance(result, str) and result.startswith(nonce + " "):
+            outcome = result[len(nonce) + 1:]
+            if outcome.startswith("installed ") and env.get("version") == outcome[10:]:
+                post_code(cfg, _js(_CLEAR_NONCE_JS), timeout=PROBE_TIMEOUT)
+                return _restart_done(args, "update", env.get("version"), started)
+            if outcome == "none":
+                post_code(cfg, _js(_CLEAR_NONCE_JS), timeout=PROBE_TIMEOUT)
+                die("Zotero found no plugin update: updates.json does not offer "
+                    "anything newer than %s yet. Right after a release it can take a "
+                    "few minutes to announce it; try again then." % env.get("version"),
+                    code=EXIT_GENERIC)
+            if outcome.startswith("error "):
+                post_code(cfg, _js(_CLEAR_NONCE_JS), timeout=PROBE_TIMEOUT)
+                die("the plugin update failed: %s. The installed plugin is "
+                    "unchanged; see `zot ping`." % outcome[6:], code=EXIT_GENERIC)
+        if time.monotonic() >= deadline:
+            die("the plugin update did not finish within %ds. Check `zot ping`; if "
+                "the endpoint stays down, re-enable Zotero Agent Bridge in Tools -> "
+                "Plugins (or run `zot restart`)." % timeout, code=EXIT_CONN)
 
 
 def _import_legacy_config():

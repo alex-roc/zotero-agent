@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`zot restart --update`** installs the plugin update right away, from the
+  terminal, instead of waiting a day for Zotero's own check or opening *Tools →
+  Plugins → gear → Check for Updates*. It is that same check, for this one plugin:
+  Zotero reads `updates.json` and verifies the XPI against its `update_hash`. The
+  command waits until the bridge answers with the new version, does nothing when
+  the plugin already matches the CLI, and refuses when the plugin is newer.
+  `zot ping` now suggests it when the plugin is behind.
+
 ## [0.8.7] - 2026-10-26
 
 ### Added

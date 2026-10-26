@@ -46,9 +46,9 @@ Bridge" is enabled, and re-run `zot ping`. See
 ## `zot ping` says the plugin is older than the CLI
 
 Expected right after a release: Zotero only checks for plugin updates **once every
-24 hours**. Force it with *Tools → Plugins → gear icon (top-right of the plugin
-list) → Check for Updates* — that menu is on the list, not in a plugin's detail
-pane. See [Updating](/zotero-agent/getting-started/install/#updating).
+24 hours**. Force it with `zot restart --update`, or with *Tools → Plugins → gear
+icon (top-right of the plugin list) → Check for Updates* — that menu is on the
+list, not in a plugin's detail pane. See [Updating](/zotero-agent/getting-started/install/#updating).
 
 ## "This add-on is unsigned / from an unknown source"
 

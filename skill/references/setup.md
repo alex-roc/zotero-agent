@@ -30,8 +30,9 @@ If `zot ping` reports the bridge endpoint as FAIL, the plugin is not loaded —
 point the user at the link above; do not attempt writes via the read API
 (it is read-only and will return `400 "Endpoint does not support method"`).
 `zot ping` also prints the installed plugin's version: if it is older than the
-CLI, tell the user to run *Tools → Plugins → gear → Check for Updates*. When
-Zotero then asks for a restart, `zot restart --plugin --yes` reloads the bridge
-in place; `zot restart --yes` restarts Zotero itself and waits for the endpoint
+CLI, `zot restart --update --yes` installs the update `updates.json` offers and
+waits for the new version (ask first; the GUI route is *Tools → Plugins → gear →
+Check for Updates*). When Zotero asks for a restart, `zot restart --plugin --yes`
+reloads the bridge in place; `zot restart --yes` restarts Zotero itself and waits for the endpoint
 to come back. With Zotero closed, `zot restart --yes` starts it. Ask before
 running any of them — the user may have unsaved work in Zotero.
