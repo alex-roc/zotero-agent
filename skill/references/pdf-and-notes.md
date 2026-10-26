@@ -162,8 +162,8 @@ permanently and in every other reader too. Needs the `[toc]` extra
 (`uv tool install --force "zotero-agent[toc]"`; a Homebrew install already has it).
 
 **EPUB boundary:** `zot toc` operates on PDF outlines, not EPUB navigation.
-For EPUB creation/repair use [epub-toc.md](epub-toc.md) and its bundled helper.
-For EPUB → PDF conversion, preserve an existing hierarchy from `toc.ncx` or the
+For EPUB creation/repair and EPUB → PDF conversion use [epub-toc.md](epub-toc.md)
+and its two bundled helpers. For the conversion, preserve an existing hierarchy from `toc.ncx` or the
 EPUB 3 navigation document. If the source is flat, reconstruct and review the
 part → chapter → section tree before conversion. Generate the visible contents
 and PDF bookmarks from that same tree: changing indentation in the visible

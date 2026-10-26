@@ -10,8 +10,8 @@ description: >-
   duplicates, or create notes on items. Also for PDFs: read or ask questions
   about an item's PDF, summarize it at multiple levels
   (whole/chapter/section), read its highlights/annotations, generate a table
-  of contents / bookmarks / outline for Zotero's reader, create or repair EPUB
-  navigation hierarchies (NCX and EPUB 3 nav), and prepare scans —
+  of contents / bookmarks / outline for Zotero's reader, repair an EPUB's
+  table of contents or convert the EPUB to PDF, and prepare scans —
   split two-up pages and OCR them to make them searchable. Also to see where
   disk space goes or reclaim it: shrink oversized PDFs, drop orphan
   attachments and page snapshots. Library operations require the bridge and
@@ -321,8 +321,9 @@ Read **`references/epub-toc.md`** for the bundled stdlib helper
 `references/epub_toc.py`: inspect navigation as JSON, decide the hierarchy,
 validate file/fragment targets, then write a new EPUB. It handles EPUB 2 NCX
 and EPUB 3 nav; it does not require Zotero running. This is separate from
-`zot toc`, which operates on PDF items. For EPUB → PDF, keep the visible
-contents and embedded reader outline aligned with the same reviewed tree.
+`zot toc`, which operates on PDF items. For EPUB → PDF use the sibling
+`references/epub_to_pdf.py` (needs Calibre) with that same reviewed tree: it
+also merges each chapter into one page flow and links plain-text notes.
 
 ## PDFs: answer questions, summarize, save notes
 

@@ -177,6 +177,93 @@ def write_nav(root, nodes, opf_dir, directory):
     nav.insert(position, add(container, nodes))
 
 
+class Book:
+    """The package and navigation documents of an open EPUB archive."""
+
+    def __init__(self, archive):
+        container = ET.fromstring(archive.read('META-INF/container.xml'))
+        self.opf_name = container.find('.//{*}rootfile').get('full-path')
+        self.opf_dir = posixpath.dirname(self.opf_name)
+        self.package = ET.fromstring(archive.read(self.opf_name))
+        self.documents, self.kinds, self.sources = {}, {}, {}
+        for item in self.package.find('{*}manifest'):
+            kind = 'ncx' if item.get('media-type') == 'application/x-dtbncx+xml' else 'nav' if 'nav' in item.get('properties', '').split() else None
+            if kind:
+                name = self.path(item.get('href'))
+                self.sources[name] = archive.read(name)
+                self.documents[name] = ET.fromstring(self.sources[name])
+                self.kinds[name] = kind
+
+    def path(self, href):
+        return posixpath.normpath(posixpath.join(self.opf_dir, unquote(href)))
+
+
+def read_tree(book):
+    if not book.documents:
+        raise ValueError('No navigation found. Supply a reviewed JSON tree')
+    name = next((n for n in book.documents if book.kinds[n] == 'nav'), next(iter(book.documents)))
+    reader = read_nav if book.kinds[name] == 'nav' else read_ncx
+    return reader(book.documents[name], posixpath.dirname(name), book.opf_dir)
+
+
+def apply_tree(archive, book, nodes, opf=None):
+    """Write `nodes` into every navigation document, creating one if the EPUB has
+    none. Returns the changed files; `opf` is the package text to patch, if not
+    the archive's own."""
+    changes = {}
+    if not book.documents:
+        # Create the navigation format appropriate for this EPUB version.
+        package, opf_dir = book.package, book.opf_dir
+        if package.get('version', '2').startswith('3'):
+            name = posixpath.join(opf_dir, '_agent-nav.xhtml')
+            source = ('<html xmlns="%s" xmlns:epub="%s"><head><title>Contents</title></head>'
+                      '<body><nav epub:type="toc"/></body></html>' % (XHTML, EPUB)).encode()
+            root = ET.fromstring(source)
+            attrs = {'id': '_agent_nav', 'href': '_agent-nav.xhtml', 'media-type': 'application/xhtml+xml', 'properties': 'nav'}
+            kind = 'nav'
+        else:
+            name = posixpath.join(opf_dir, '_agent-toc.ncx')
+            source = ('<ncx xmlns="%s" version="2005-1"/>' % NCX).encode()
+            root = ET.fromstring(source)
+            head = ET.SubElement(root, '{%s}head' % NCX)
+            identifier = package.find('.//{http://purl.org/dc/elements/1.1/}identifier')
+            ET.SubElement(head, '{%s}meta' % NCX, {'name': 'dtb:uid', 'content': text(identifier) if identifier is not None else 'epub-toc'})
+            ET.SubElement(head, '{%s}meta' % NCX, {'name': 'dtb:depth', 'content': '1'})
+            title = package.find('.//{http://purl.org/dc/elements/1.1/}title')
+            ET.SubElement(ET.SubElement(root, '{%s}docTitle' % NCX), '{%s}text' % NCX).text = text(title) if title is not None else 'Contents'
+            attrs = {'id': '_agent_toc', 'href': '_agent-toc.ncx', 'media-type': 'application/x-dtbncx+xml'}
+            kind = 'ncx'
+        if name in archive.namelist() or any(item.get('id') == attrs['id'] for item in package.find('{*}manifest')):
+            raise ValueError('Reserved navigation name/id already exists')
+        changes[book.opf_name] = register_item(opf or archive.read(book.opf_name), attrs, attrs['id'] if kind == 'ncx' else None)
+        book.documents[name], book.kinds[name], book.sources[name] = root, kind, source
+    for name, root in book.documents.items():
+        writer = write_nav if book.kinds[name] == 'nav' else write_ncx
+        writer(root, nodes, book.opf_dir, posixpath.dirname(name))
+        changes[name] = serialize(root, book.sources[name])
+    return changes
+
+
+def write_epub(archive, changes, output, removed=()):
+    """Publish a copy of `archive` with `changes` at `output`, which must not exist."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=output.parent, suffix='.epub')
+    os.close(fd)
+    changes = dict(changes)
+    try:
+        with zipfile.ZipFile(temporary, 'w') as epub:
+            epub.writestr('mimetype', archive.read('mimetype'), compress_type=zipfile.ZIP_STORED)
+            for item in archive.infolist():
+                if item.filename != 'mimetype' and item.filename not in removed:
+                    epub.writestr(item, changes.pop(item.filename, archive.read(item.filename)))
+            for name, data in changes.items():
+                epub.writestr(name, data, compress_type=zipfile.ZIP_DEFLATED)
+        # Exclusive publication protects a file created while conversion ran.
+        os.link(temporary, output)
+    finally:
+        os.unlink(temporary)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('epub', type=Path)
@@ -191,78 +278,13 @@ def main():
     if args.output and (args.output.resolve() == args.epub.resolve() or args.output.exists()):
         parser.error('Output must be a new file, different from the input')
     with zipfile.ZipFile(args.epub) as archive:
-        container = ET.fromstring(archive.read('META-INF/container.xml'))
-        opf_name = container.find('.//{*}rootfile').get('full-path')
-        opf_dir = posixpath.dirname(opf_name)
-        package = ET.fromstring(archive.read(opf_name))
-        manifest = package.find('{*}manifest')
-        documents = {}
-        kinds = {}
-        sources = {}
-        for item in manifest:
-            kind = 'ncx' if item.get('media-type') == 'application/x-dtbncx+xml' else 'nav' if 'nav' in item.get('properties', '').split() else None
-            if kind:
-                name = posixpath.normpath(posixpath.join(opf_dir, unquote(item.get('href'))))
-                sources[name] = archive.read(name)
-                documents[name] = ET.fromstring(sources[name])
-                kinds[name] = kind
-        if args.plan:
-            nodes = json.loads(args.plan.read_text(encoding='utf-8'))
-        elif documents:
-            name = next((n for n in documents if kinds[n] == 'nav'), next(iter(documents)))
-            reader = read_nav if kinds[name] == 'nav' else read_ncx
-            nodes = reader(documents[name], posixpath.dirname(name), opf_dir)
-        else:
-            raise ValueError('No navigation found. Supply a reviewed JSON tree with --from')
-        validate(nodes, archive, opf_dir)
+        book = Book(archive)
+        nodes = json.loads(args.plan.read_text(encoding='utf-8')) if args.plan else read_tree(book)
+        validate(nodes, archive, book.opf_dir)
         if not args.plan or args.dry_run:
             print(json.dumps(nodes, ensure_ascii=False, indent=2))
             return
-        changes = {}
-        if not documents:
-            # Create the navigation format appropriate for this EPUB version.
-            if package.get('version', '2').startswith('3'):
-                name = posixpath.join(opf_dir, '_agent-nav.xhtml')
-                source = ('<html xmlns="%s" xmlns:epub="%s"><head><title>Contents</title></head>'
-                          '<body><nav epub:type="toc"/></body></html>' % (XHTML, EPUB)).encode()
-                root = ET.fromstring(source)
-                attrs = {'id': '_agent_nav', 'href': '_agent-nav.xhtml', 'media-type': 'application/xhtml+xml', 'properties': 'nav'}
-                kind = 'nav'
-            else:
-                name = posixpath.join(opf_dir, '_agent-toc.ncx')
-                source = ('<ncx xmlns="%s" version="2005-1"/>' % NCX).encode()
-                root = ET.fromstring(source)
-                head = ET.SubElement(root, '{%s}head' % NCX)
-                identifier = package.find('.//{http://purl.org/dc/elements/1.1/}identifier')
-                ET.SubElement(head, '{%s}meta' % NCX, {'name': 'dtb:uid', 'content': text(identifier) if identifier is not None else 'epub-toc'})
-                ET.SubElement(head, '{%s}meta' % NCX, {'name': 'dtb:depth', 'content': '1'})
-                title = package.find('.//{http://purl.org/dc/elements/1.1/}title')
-                ET.SubElement(ET.SubElement(root, '{%s}docTitle' % NCX), '{%s}text' % NCX).text = text(title) if title is not None else 'Contents'
-                attrs = {'id': '_agent_toc', 'href': '_agent-toc.ncx', 'media-type': 'application/x-dtbncx+xml'}
-                kind = 'ncx'
-            if name in archive.namelist() or any(item.get('id') == attrs['id'] for item in manifest):
-                raise ValueError('Reserved navigation name/id already exists')
-            changes[opf_name] = register_item(archive.read(opf_name), attrs, attrs['id'] if kind == 'ncx' else None)
-            documents[name], kinds[name], sources[name] = root, kind, source
-        for name, root in documents.items():
-            writer = write_nav if kinds[name] == 'nav' else write_ncx
-            writer(root, nodes, opf_dir, posixpath.dirname(name))
-            changes[name] = serialize(root, sources[name])
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(dir=args.output.parent, suffix='.epub')
-        os.close(fd)
-        try:
-            with zipfile.ZipFile(temporary, 'w') as output:
-                output.writestr('mimetype', archive.read('mimetype'), compress_type=zipfile.ZIP_STORED)
-                for item in archive.infolist():
-                    if item.filename != 'mimetype':
-                        output.writestr(item, changes.pop(item.filename, archive.read(item.filename)))
-                for name, data in changes.items():
-                    output.writestr(name, data, compress_type=zipfile.ZIP_DEFLATED)
-            # Exclusive publication protects a file created while conversion ran.
-            os.link(temporary, args.output)
-        finally:
-            os.unlink(temporary)
+        write_epub(archive, apply_tree(archive, book, nodes), args.output)
     print(str(args.output))
 
 

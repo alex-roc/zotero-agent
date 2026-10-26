@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **The skill converts EPUBs to PDF with a reviewed outline**
+  (`references/epub_to_pdf.py`, stdlib plus Calibre). The tree you reviewed with
+  `epub_toc.py` becomes the PDF bookmarks and the visible contents page. Two
+  defects that a correct outline does not reveal are fixed before Calibre sees the
+  book:
+  - Calibre starts every spine file on a new page, so a book that keeps each
+    section in its own file broke after every section. Each chapter's files are now
+    merged into one.
+  - Notes typed as plain text (a digit glued to a word, `8. …` paragraphs closing
+    the chapter) become superscript calls linked both ways.
+
+  On a 450-page book this gave 323 pages and 151 of 155 notes linked; the other four
+  calls are missing from the source.
+
 ## [0.8.6] - 2026-10-26
 
 ### Added

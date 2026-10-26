@@ -66,16 +66,55 @@ delete front matter bundled into the same XHTML as the index.
 
 ## Convert to PDF
 
-Calibre's `ebook-convert` builds the PDF outline from the EPUB's navigation, so
-fix the EPUB first and convert the corrected copy; the nesting carries over
-(verified with a part → chapter → section tree, three outline levels).
+Use the bundled **`epub_to_pdf.py`** (stdlib plus Calibre's `ebook-convert`; on
+macOS it finds `/Applications/calibre.app` by itself). Give it the **same reviewed
+tree** you would write with `epub_toc.py`: it becomes the PDF outline, rebuilds a
+visible contents page made of one-link paragraphs, and decides where pages start.
 
 ```bash
-# macOS: /Applications/calibre.app/Contents/MacOS/ebook-convert
-ebook-convert "book-with-toc.epub" "book.pdf" --paper-size a4
+python3 "$SKILL_DIR/references/epub_toc.py" "book.epub" > toc.json   # then review it
+python3 "$SKILL_DIR/references/epub_to_pdf.py" "book.epub" --toc toc.json -o "book.pdf"
+python3 "$SKILL_DIR/references/epub_to_pdf.py" "book.epub" --toc toc.json --profile tablet --language es -o "book.pdf"
 uv run --with pymupdf python -c "import pymupdf, sys
 for level, title, page in pymupdf.open(sys.argv[1]).get_toc(): print('  ' * (level - 1) + title, page)" book.pdf
 ```
+
+Profiles: `a4` (default: A4, 14.4 pt, 72 pt margins) and `tablet` (A5, 12 pt, 32 pt);
+`--width/--height` (mm), `--font-size` and `--margin` (pt) override them. The
+font defaults to Liberation Serif, embedded from Calibre. The footer reads
+"Página N" or "Page N" by the book's language. **Pass `--language` when the
+metadata is wrong**: it often is in converted EPUBs (a Spanish book declaring
+`en-US`). `--prepare-only out.epub` writes the EPUB Calibre would see, without
+converting, for inspection.
+
+What the preparation fixes, and why a correct outline alone does not:
+
+- **Page breaks inside chapters.** Calibre starts **every spine file on a new
+  page**; `--page-breaks-before /` only drops its extra break before each `h1`/`h2`.
+  Books that keep each section, or just the "CAPÍTULO N" label, in its own file
+  break after every section. The helper merges each chapter's files. A page starts
+  at every top-level entry, at every entry with children and at their siblings, so
+  a chapter without sections still starts one. A short label page that no entry
+  points to joins the chapter it announces. Links, ids and the tree follow the
+  merge, and the forced `page-break-before: always` that such files end with is
+  removed.
+- **Notes as plain text.** Scanned-and-OCRed EPUBs keep the call as a digit glued
+  to the word (`análisis8.`, `previos.17 De`) and the notes as `<p>8. …</p>` closing
+  the chapter, unlinked. Only a consecutive run that closes a chapter and starts at 1
+  or continues the previous run counts, because numbered lists in the body look the
+  same. Calls are matched in order and never after a digit (`1.7` and `5,25` are not
+  calls). They become superscripts linked to the note, and the note number links
+  back. A chapter where fewer than half the calls are found is left alone. The
+  report line says how many notes were linked; the missing ones are usually calls
+  the source lost. Look before guessing.
+
+On the book this was built for (88 spine files, 155 notes), the PDF went from 450
+to 323 pages and 151 notes were linked both ways. The other four calls are missing
+or mistyped in the source.
+
+Verify in the PDF, not in the EPUB: count internal links and check that each page
+pair has as many links back as forward. Confirm that the pages still left short
+end a chapter or precede a figure that did not fit.
 
 ## Validate the deliverable
 
@@ -94,5 +133,5 @@ oversized object in the **same XHTML**, especially a table with `white-space:
 nowrap`. Fix that overflow rather than compensating with a larger base font.
 Avoid splitting a long contents entry across pages (`break-inside: avoid`).
 
-The helper does not upload or attach the result, replace a Zotero attachment,
-convert EPUB to PDF, or decide hierarchy automatically. Those are separate tasks.
+Neither helper uploads or attaches the result, replaces a Zotero attachment, or
+decides the hierarchy for you. Those are separate tasks.
